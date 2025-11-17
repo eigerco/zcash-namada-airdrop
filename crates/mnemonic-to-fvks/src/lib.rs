@@ -3,8 +3,7 @@
 use bip39::Language;
 use clap_derive::ValueEnum;
 use eyre::{Result, WrapErr as _};
-use orchard::keys::FullViewingKey as OrchardFvk;
-use orchard::keys::SpendingKey as OrchardSpendingKey;
+use orchard::keys::{FullViewingKey as OrchardFvk, SpendingKey as OrchardSpendingKey};
 use sapling_crypto::keys::FullViewingKey as SaplingFvk;
 use sapling_crypto::zip32::ExtendedSpendingKey as SaplingSpendingKey;
 use zcash_primitives::zip32::AccountId;
@@ -100,16 +99,25 @@ pub fn mnemonic_to_keys(phrase: &str, coin_type: CoinType) -> Result<ZcashKeys> 
     let seed = m.to_seed("");
 
     // Derive Orchard keys
-    let orchard_spending_key = OrchardSpendingKey::from_zip32_seed(&seed, coin_type.to_u32(), AccountId::ZERO)
-        .map_err(|e| eyre::eyre!(e))
-        .wrap_err_with(|| {
-            format!("Failed to derive Orchard spending key from ZIP-32 seed for coin type {coin_type:?}")
-        })?;
+    let orchard_spending_key = OrchardSpendingKey::from_zip32_seed(
+        &seed,
+        coin_type.to_u32(),
+        AccountId::ZERO,
+    )
+    .map_err(|e| eyre::eyre!(e))
+    .wrap_err_with(|| {
+        format!(
+            "Failed to derive Orchard spending key from ZIP-32 seed for coin type {coin_type:?}"
+        )
+    })?;
     let orchard_fvk = OrchardFvk::from(&orchard_spending_key);
 
     // Derive Sapling keys
     let sapling_spending_key = sapling_spending_key(&seed, coin_type);
-    let sapling_fvk = sapling_spending_key.to_diversifiable_full_viewing_key().fvk().clone();
+    let sapling_fvk = sapling_spending_key
+        .to_diversifiable_full_viewing_key()
+        .fvk()
+        .clone();
 
     Ok(ZcashKeys {
         orchard_fvk,
