@@ -29,6 +29,7 @@ zcash-notes-proof = { path = "crates/zcash-notes-proof" }
 absolute_paths = "allow"
 allow_attributes = "allow"
 arbitrary_source_item_ordering.level = "allow"
+non_ascii_literal = "allow"
 blanket_clippy_restriction_lints = "allow"
 cargo = { priority = -1, level = "deny" }
 cargo_common_metadata = "allow"
