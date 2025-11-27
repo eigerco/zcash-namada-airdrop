@@ -43,9 +43,9 @@ fn main() -> Result<()> {
     })?;
     mnemonic.zeroize();
 
-    println!("═══════════════════════════════════════════════════════════════");
+    println!("\n{}", "=".repeat(50));
     println!("  ZCASH KEYS (Network: {:?})", cli.coin_type);
-    println!("═══════════════════════════════════════════════════════════════\n");
+    println!("\n{}", "=".repeat(50));
 
     println!("📋 FULL VIEWING KEYS (Safe to share - view only)\n");
     println!("Orchard FVK:");
@@ -53,10 +53,10 @@ fn main() -> Result<()> {
     println!("Sapling FVK:");
     println!("  {}\n", hex::encode(keys.sapling_fvk.to_bytes()));
 
+    println!("\n{}", "=".repeat(50));
     if cli.show_spending_keys {
-        println!("═══════════════════════════════════════════════════════════════");
         println!("⚠️  WARNING: SPENDING KEYS CAN SPEND FUNDS!");
-        println!("═══════════════════════════════════════════════════════════════\n");
+        println!("\n{}", "=".repeat(50));
 
         println!("🔑 SPENDING KEYS (NEVER share these!)\n");
         println!("Orchard Spending Key:");
@@ -64,10 +64,9 @@ fn main() -> Result<()> {
         println!("Sapling Spending Key:");
         println!("  {}\n", hex::encode(keys.sapling_spending_key.to_bytes()));
     } else {
-        println!("═══════════════════════════════════════════════════════════════");
         println!("ℹ️  Spending keys hidden. Use --show-spending-keys to display.");
-        println!("═══════════════════════════════════════════════════════════════");
     }
+    println!("\n{}", "=".repeat(50));
 
     Ok(())
 }
