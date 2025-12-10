@@ -18,7 +18,8 @@ use futures_core::Stream;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader};
 
-use crate::chain_nullifiers::{ChainNullifiers, Pool, PoolNullifier};
+use crate::Pool;
+use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
 
 /// Read nullifiers from local files
 pub struct FileSource {

@@ -8,6 +8,7 @@ use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
 use zcash_primitives::consensus::Parameters;
 
+use crate::Pool;
 use crate::user_nullifiers::decrypt_notes::{derive_orchard_nullifier, derive_sapling_nullifier};
 
 pub(crate) mod decrypt_notes;
@@ -182,10 +183,10 @@ impl AnyFoundNote {
     }
 
     /// Derive the hiding nullifier for this note
-    pub fn pool(&self) -> &'static str {
+    pub fn pool(&self) -> Pool {
         match self {
-            AnyFoundNote::Sapling(_) => "sapling",
-            AnyFoundNote::Orchard(_) => "orchard",
+            AnyFoundNote::Sapling(_) => Pool::Sapling,
+            AnyFoundNote::Orchard(_) => Pool::Orchard,
         }
     }
 }

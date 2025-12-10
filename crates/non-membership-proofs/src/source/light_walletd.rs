@@ -12,12 +12,13 @@ use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::Channel;
 use zcash_primitives::consensus::Parameters;
 
-use crate::chain_nullifiers::{ChainNullifiers, Nullifier, Pool, PoolNullifier};
+use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
 use crate::user_nullifiers::decrypt_notes::{DecryptedNote, decrypt_compact_block};
 use crate::user_nullifiers::{
     AnyFoundNote, FoundNote, NoteMetadata, OrchardViewingKeys, SaplingNote, SaplingViewingKeys,
     UserNullifiers, ViewingKeys,
 };
+use crate::{Nullifier, Pool};
 
 /// Errors that can occur when interacting with lightwalletd
 #[derive(Debug, thiserror::Error)]

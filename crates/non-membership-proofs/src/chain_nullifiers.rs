@@ -5,19 +5,7 @@ use std::ops::RangeInclusive;
 
 use futures_core::Stream;
 
-/// A representation of Nullifiers
-///
-/// Nullifiers in Zcash Orchard and Sapling pools are both 32 bytes long.
-pub type Nullifier = [u8; 32];
-
-/// Zcash pools
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pool {
-    /// Sapling pool
-    Sapling,
-    /// Orchard pool
-    Orchard,
-}
+use crate::{Nullifier, Pool};
 
 /// A nullifier tagged with its pool
 #[derive(Debug, Clone)]

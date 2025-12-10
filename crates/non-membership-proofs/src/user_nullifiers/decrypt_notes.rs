@@ -311,7 +311,7 @@ pub(crate) fn derive_orchard_nullifier(
 
     // Reverse bytes to match the byte order used in compact blocks
     // The nullifier computation returns bytes in one order, but compact blocks use the reverse
-    nullifier.reverse();
+    nullifier.reverse(); // TODO: remove reverse, use only when display
     nullifier
 }
 
@@ -344,6 +344,6 @@ pub(crate) fn derive_sapling_nullifier(
 
     // Reverse bytes to match the byte order used in compact blocks
     // The nullifier computation returns bytes in one order, but compact blocks use the reverse
-    nullifier.reverse();
+    nullifier.reverse(); // TODO: remove reverse, use only when display
     nullifier
 }

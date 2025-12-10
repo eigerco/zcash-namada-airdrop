@@ -1,6 +1,6 @@
 //! Utilities for printing nullifiers
 
-use crate::chain_nullifiers::Nullifier;
+use crate::Nullifier;
 
 /// Prints nullifiers as hex strings
 pub fn print_nullifiers(nullifiers: &[Nullifier], limit: Option<usize>) {

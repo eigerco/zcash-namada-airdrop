@@ -7,7 +7,7 @@ pub mod utils;
 
 use std::path::Path;
 
-use chain_nullifiers::{Nullifier, Pool, PoolNullifier};
+use chain_nullifiers::PoolNullifier;
 use futures::{Stream, TryStreamExt as _};
 use rs_merkle::{Hasher, MerkleTree};
 use thiserror::Error;
@@ -19,6 +19,20 @@ const BUF_SIZE: usize = 1024 * 1024;
 
 /// Size of a nullifier in bytes
 const NULLIFIER_SIZE: usize = 32;
+
+/// A representation of Nullifiers
+///
+/// Nullifiers in Zcash Orchard and Sapling pools are both 32 bytes long.
+pub type Nullifier = [u8; 32];
+
+/// Zcash pools
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pool {
+    /// Sapling pool
+    Sapling,
+    /// Orchard pool
+    Orchard,
+}
 
 /// Collect stream into separate pools
 ///
@@ -62,26 +76,44 @@ pub enum MerkleTreeError {
 pub fn build_merkle_tree<H: Hasher>(
     nullifiers: &[Nullifier],
 ) -> Result<MerkleTree<H>, MerkleTreeError> {
+    if nullifiers.is_empty() {
+        return Ok(MerkleTree::new());
+    }
+
     if !nullifiers.is_sorted() {
         return Err(MerkleTreeError::NotSorted);
     }
 
-    let leaves = nullifiers
-        .windows(2)
-        .map(|window| {
-            let mut merged = [0u8; 2 * NULLIFIER_SIZE];
-            merged[..NULLIFIER_SIZE].copy_from_slice(&window[0]);
-            merged[NULLIFIER_SIZE..].copy_from_slice(&window[1]);
-            merged
-        })
-        .map(|leaf| H::hash(&leaf))
-        .collect::<Vec<_>>();
+    let front = H::hash(&build_leaf(&[0u8; NULLIFIER_SIZE], &nullifiers[0]));
+    let back = H::hash(&build_leaf(
+        &nullifiers[nullifiers.len() - 1],
+        &[0xFF; NULLIFIER_SIZE],
+    ));
+
+    // Pre-allocate: 1 front + (n-1) windows + 1 back = n + 1
+    let mut leaves = Vec::with_capacity(nullifiers.len() + 1);
+
+    leaves.push(front);
+    leaves.extend(
+        nullifiers
+            .windows(2)
+            .map(|w| H::hash(&build_leaf(&w[0], &w[1]))),
+    );
+    leaves.push(back);
 
     Ok(MerkleTree::from_leaves(&leaves))
 }
 
+/// Build a leaf node from two nullifiers
+pub fn build_leaf(nf1: &Nullifier, nf2: &Nullifier) -> [u8; 2 * NULLIFIER_SIZE] {
+    let mut leaf = [0u8; 2 * NULLIFIER_SIZE];
+    leaf[..NULLIFIER_SIZE].copy_from_slice(nf1);
+    leaf[NULLIFIER_SIZE..].copy_from_slice(nf2);
+    leaf
+}
+
 /// Write leaf notes to binary file without intermediate allocation
-pub async fn write_raw_nullifiers<P>(notes: &[[u8; NULLIFIER_SIZE]], path: P) -> std::io::Result<()>
+pub async fn write_raw_nullifiers<P>(notes: &[Nullifier], path: P) -> std::io::Result<()>
 where
     P: AsRef<Path>,
 {
@@ -95,7 +127,7 @@ where
 }
 
 /// Read leaf notes from binary file without intermediate allocation
-pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<[u8; NULLIFIER_SIZE]>>
+pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<Nullifier>>
 where
     P: AsRef<Path>,
 {
@@ -104,7 +136,7 @@ where
 
     let mut buf = Vec::with_capacity(BUF_SIZE);
     reader.read_to_end(&mut buf).await?;
-    let nullifiers: Vec<[u8; NULLIFIER_SIZE]> = bytemuck::cast_slice(&buf).to_vec();
+    let nullifiers: Vec<Nullifier> = bytemuck::cast_slice(&buf).to_vec();
 
     Ok(nullifiers)
 }
