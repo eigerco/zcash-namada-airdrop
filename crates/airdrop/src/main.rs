@@ -178,7 +178,16 @@ async fn main() -> eyre::Result<()> {
                 let found_note = found_note?;
 
                 // Derive nullifier for this note
-                let nullifier = found_note.nullifier(&viewing_keys);
+                let nullifier = match found_note.nullifier(&viewing_keys) {
+                    Some(nf) => nf,
+                    None => {
+                        debug!(
+                            "Skipping note at height {}: no viewing key available to derive nullifier",
+                            found_note.height()
+                        );
+                        continue;
+                    }
+                };
 
                 info!(
                     "Found {} note at height {}: nullifier = {}, scope = {:?}",

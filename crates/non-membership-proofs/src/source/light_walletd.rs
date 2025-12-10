@@ -15,7 +15,8 @@ use zcash_primitives::consensus::Parameters;
 use crate::chain_nullifiers::{ChainNullifiers, Nullifier, Pool, PoolNullifier};
 use crate::user_nullifiers::decrypt_notes::{DecryptedNote, decrypt_compact_block};
 use crate::user_nullifiers::{
-    FoundNote, NoteMetadata, OrchardViewingKeys, SaplingViewingKeys, UserNullifiers, ViewingKeys,
+    AnyFoundNote, FoundNote, NoteMetadata, OrchardViewingKeys, SaplingNote, SaplingViewingKeys,
+    UserNullifiers, ViewingKeys,
 };
 
 /// Errors that can occur when interacting with lightwalletd
@@ -115,10 +116,10 @@ impl ChainNullifiers for LightWalletd {
 
 impl UserNullifiers for LightWalletd {
     type Error = LightWalletdError;
-    type Stream = Pin<Box<dyn Stream<Item = Result<FoundNote, Self::Error>> + Send>>;
+    type Stream = Pin<Box<dyn Stream<Item = Result<AnyFoundNote, Self::Error>> + Send>>;
 
     fn user_nullifiers<P: Parameters + Clone + Send + 'static>(
-        self,
+        &self,
         network: &P,
         start_height: u64,
         end_height: u64,
@@ -138,7 +139,7 @@ impl UserNullifiers for LightWalletd {
             pool_types: vec![],
         };
 
-        let mut client = self.client;
+        let mut client = self.client.clone();
 
         let sapling_viewing_keys = SaplingViewingKeys::from_dfvk(sapling_fvk);
         let orchard_viewing_keys = OrchardViewingKeys::from_fvk(orchard_fvk);
@@ -187,14 +188,14 @@ impl UserNullifiers for LightWalletd {
                                 .map(|tx| tx.txid.clone())
                                 .unwrap_or_else(|| block.hash.clone());
 
-                            yield FoundNote::Orchard {
+                            yield AnyFoundNote::Orchard(FoundNote::<orchard::Note> {
                                 note: orchard_note.note,
                                 metadata: NoteMetadata {
                                     height: block.height,
                                     txid,
                                     scope: orchard_note.scope,
                                 },
-                            };
+                            });
                         }
                         DecryptedNote::Sapling(sapling_note) => {
                             // Calculate the note's position in the global Sapling commitment tree
@@ -211,15 +212,17 @@ impl UserNullifiers for LightWalletd {
                                 .map(|tx| tx.txid.clone())
                                 .unwrap_or_else(|| block.hash.clone());
 
-                            yield FoundNote::Sapling {
-                                note: sapling_note.note,
+                            yield AnyFoundNote::Sapling(FoundNote::<SaplingNote> {
+                                note: SaplingNote {
+                                    note: sapling_note.note,
+                                    position,
+                                },
                                 metadata: NoteMetadata {
                                     height: block.height,
                                     txid,
                                     scope: sapling_note.scope,
                                 },
-                                position,
-                            };
+                            });
                         }
                     }
                 }

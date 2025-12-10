@@ -1,7 +1,5 @@
 //! Non-membership proofs library
 
-// TODO: remove hardcoded values from this file
-
 pub mod chain_nullifiers;
 pub mod source;
 pub mod user_nullifiers;
@@ -15,6 +13,12 @@ use rs_merkle::{Hasher, MerkleTree};
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter};
+
+/// Buffer size for file I/O
+const BUF_SIZE: usize = 1024 * 1024;
+
+/// Size of a nullifier in bytes
+const NULLIFIER_SIZE: usize = 32;
 
 /// Collect stream into separate pools
 ///
@@ -65,9 +69,9 @@ pub fn build_merkle_tree<H: Hasher>(
     let leaves = nullifiers
         .windows(2)
         .map(|window| {
-            let mut merged = [0u8; 64];
-            merged[..32].copy_from_slice(&window[0]);
-            merged[32..].copy_from_slice(&window[1]);
+            let mut merged = [0u8; 2 * NULLIFIER_SIZE];
+            merged[..NULLIFIER_SIZE].copy_from_slice(&window[0]);
+            merged[NULLIFIER_SIZE..].copy_from_slice(&window[1]);
             merged
         })
         .map(|leaf| H::hash(&leaf))
@@ -77,12 +81,12 @@ pub fn build_merkle_tree<H: Hasher>(
 }
 
 /// Write leaf notes to binary file without intermediate allocation
-pub async fn write_raw_nullifiers<P>(notes: &[[u8; 32]], path: P) -> std::io::Result<()>
+pub async fn write_raw_nullifiers<P>(notes: &[[u8; NULLIFIER_SIZE]], path: P) -> std::io::Result<()>
 where
     P: AsRef<Path>,
 {
     let file = File::create(path).await?;
-    let mut writer = BufWriter::with_capacity(1024 * 1024, file);
+    let mut writer = BufWriter::with_capacity(BUF_SIZE, file);
 
     writer.write_all(bytemuck::cast_slice(notes)).await?;
     writer.flush().await?;
@@ -91,16 +95,16 @@ where
 }
 
 /// Read leaf notes from binary file without intermediate allocation
-pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<[u8; 32]>>
+pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<[u8; NULLIFIER_SIZE]>>
 where
     P: AsRef<Path>,
 {
     let file = File::open(path).await?;
-    let mut reader = BufReader::with_capacity(1024 * 1024, file);
+    let mut reader = BufReader::with_capacity(BUF_SIZE, file);
 
-    let mut buf = Vec::new();
+    let mut buf = Vec::with_capacity(BUF_SIZE);
     reader.read_to_end(&mut buf).await?;
-    let notes: Vec<[u8; 32]> = bytemuck::cast_slice(&buf).to_vec();
+    let nullifiers: Vec<[u8; NULLIFIER_SIZE]> = bytemuck::cast_slice(&buf).to_vec();
 
-    Ok(notes)
+    Ok(nullifiers)
 }
