@@ -46,6 +46,8 @@
         protobuf
         typos
         tokio-console
+
+        pre-commit
       ];
 
       # Documentation generation tools
