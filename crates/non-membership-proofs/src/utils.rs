@@ -33,3 +33,33 @@ pub fn print_summary(name: &str, nullifiers: &[Nullifier]) {
         );
     }
 }
+
+const fn reverse_bytes<const N: usize>(input: [u8; N]) -> [u8; N] {
+    let mut output = [0u8; N];
+    let mut i = 0;
+    while i < N {
+        output[i] = input[N - 1 - i];
+        i += 1;
+    }
+    output
+}
+
+/// Extension trait for reversing byte slices into fixed-size arrays
+pub trait ReverseBytes<const N: usize> {
+    /// Reverse bytes and convert to a fixed-size array
+    /// Returns None if the slice length doesn't match N
+    fn reverse_into_array(&self) -> Option<[u8; N]>;
+}
+
+impl<const N: usize> ReverseBytes<N> for [u8] {
+    fn reverse_into_array(&self) -> Option<[u8; N]> {
+        let arr: [u8; N] = self.try_into().ok()?;
+        Some(reverse_bytes(arr))
+    }
+}
+
+impl<const N: usize> ReverseBytes<N> for Vec<u8> {
+    fn reverse_into_array(&self) -> Option<[u8; N]> {
+        self.as_slice().reverse_into_array()
+    }
+}

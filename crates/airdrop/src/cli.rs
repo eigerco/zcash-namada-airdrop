@@ -80,6 +80,14 @@ pub(crate) enum Commands {
         /// Birthday height for the provided viewing keys
         #[arg(long, env = "BIRTHDAY_HEIGHT", default_value_t = 419_200)]
         birthday_height: u64,
+
+        /// Export the valid airdrop claims to this JSON file
+        #[arg(
+            long,
+            env = "AIRDROP_CLAIMS_OUTPUT_FILE",
+            default_value = "airdrop_claims.json"
+        )]
+        airdrop_claims_output_file: String,
     },
 }
 

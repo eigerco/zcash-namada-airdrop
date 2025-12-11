@@ -9,7 +9,6 @@ use sapling::zip32::DiversifiableFullViewingKey;
 use zcash_primitives::consensus::Parameters;
 
 use crate::Pool;
-use crate::user_nullifiers::decrypt_notes::{derive_orchard_nullifier, derive_sapling_nullifier};
 
 pub(crate) mod decrypt_notes;
 
@@ -78,7 +77,7 @@ impl NoteNullifier for SaplingNote {
 
     fn nullifier(&self, keys: &Self::ViewingKeys, metadata: &NoteMetadata) -> [u8; 32] {
         let nk = keys.nk(metadata.scope);
-        derive_sapling_nullifier(&self.note, &nk, self.position)
+        self.note.nf(nk, self.position).0
     }
 
     fn hiding_nullifier(
@@ -99,7 +98,7 @@ impl NoteNullifier for orchard::Note {
     type ViewingKeys = OrchardViewingKeys;
 
     fn nullifier(&self, keys: &Self::ViewingKeys, _metadata: &NoteMetadata) -> [u8; 32] {
-        derive_orchard_nullifier(self, &keys.fvk)
+        self.nullifier(&keys.fvk).to_bytes()
     }
 
     fn hiding_nullifier(
