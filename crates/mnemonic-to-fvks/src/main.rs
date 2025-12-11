@@ -31,6 +31,10 @@ fn parse_network(s: &str) -> Result<Network> {
 
 #[allow(clippy::print_stdout, reason = "CLI utility")]
 fn main() -> Result<()> {
+    #[allow(
+        clippy::let_underscore_untyped,
+        reason = "Ignoring dotenv result intentionally"
+    )]
     let _ = dotenvy::dotenv().ok();
     let cli = Cli::parse();
 
@@ -38,7 +42,7 @@ fn main() -> Result<()> {
         .wrap_err("Failed to read mnemonic from environment or user input")?;
 
     println!("Deriving all Zcash keys from mnemonic...\n");
-    let keys = mnemonic_to_keys(&mnemonic, &cli.network)
+    let keys = mnemonic_to_keys(&mnemonic, cli.network)
         .wrap_err_with(|| format!("Failed to derive Zcash keys for network {:?}", cli.network))?;
     mnemonic.zeroize();
 

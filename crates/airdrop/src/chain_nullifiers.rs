@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use futures::{Stream, StreamExt as _};
-use non_membership_proofs::chain_nullifiers::{ChainNullifiers, PoolNullifier};
-use non_membership_proofs::source::file::FileSource;
+use non_membership_proofs::chain_nullifiers::{ChainNullifiers as _, PoolNullifier};
+use non_membership_proofs::source::file::Source as FileSource;
 use non_membership_proofs::source::light_walletd::LightWalletd;
 use tracing::{debug, instrument};
 
@@ -20,7 +20,7 @@ pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<Nullifie
             let source = LightWalletd::connect(&url).await?;
             Ok(Box::pin(
                 source
-                    .into_nullifiers_stream(&config.snapshot)
+                    .nullifiers_stream(&config.snapshot)
                     .map(|r| r.map_err(Into::into)),
             ))
         }
@@ -28,7 +28,7 @@ pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<Nullifie
             let source = FileSource::new(PathBuf::from(sapling), PathBuf::from(orchard));
             Ok(Box::pin(
                 source
-                    .into_nullifiers_stream(&config.snapshot)
+                    .nullifiers_stream(&config.snapshot)
                     .map(|r| r.map_err(Into::into)),
             ))
         }

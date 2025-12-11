@@ -9,7 +9,7 @@ pub(crate) struct AirdropConfiguration<'a> {
 }
 
 impl<'a> AirdropConfiguration<'a> {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         sapling_merkle_root: Option<&'a str>,
         orchard_merkle_root: Option<&'a str>,
     ) -> Self {

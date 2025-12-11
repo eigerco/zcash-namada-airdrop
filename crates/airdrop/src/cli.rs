@@ -17,6 +17,10 @@ pub(crate) struct Cli {
 }
 
 #[derive(Debug, clap::Subcommand)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "CLI commands are only parsed once"
+)]
 pub(crate) enum Commands {
     /// Build a snapshot of nullifiers from a source
     BuildAirdropConfiguration {
@@ -111,7 +115,7 @@ pub(crate) struct SourceArgs {
     #[arg(long, env = "LIGHTWALLETD_URL")]
     pub lightwalletd_url: Option<String>,
 
-    /// Input files in format: sapling_path,orchard_path
+    /// Input files in format: `sapling_path,orchard_path`
     #[arg(long, env = "INPUT_FILES")]
     pub input_files: Option<FileSourceArgs>,
 }
@@ -130,8 +134,8 @@ impl std::str::FromStr for FileSourceArgs {
             .split_once(',')
             .ok_or_else(|| eyre!("Expected format: sapling_path,orchard_path"))?;
         Ok(Self {
-            sapling: sapling.to_string(),
-            orchard: orchard.to_string(),
+            sapling: sapling.to_owned(),
+            orchard: orchard.to_owned(),
         })
     }
 }
@@ -147,8 +151,8 @@ impl TryFrom<SourceArgs> for Source {
 
     fn try_from(args: SourceArgs) -> Result<Self, Self::Error> {
         match (args.lightwalletd_url, args.input_files) {
-            (Some(url), None) => Ok(Source::Lightwalletd { url }),
-            (None, Some(files)) => Ok(Source::File {
+            (Some(url), None) => Ok(Self::Lightwalletd { url }),
+            (None, Some(files)) => Ok(Self::File {
                 orchard: files.orchard,
                 sapling: files.sapling,
             }),
@@ -203,8 +207,6 @@ fn parse_sapling_fvk(hex: &str) -> Result<DiversifiableFullViewingKey> {
         "Invalid Sapling FVK length: expected 128 bytes, got {} bytes",
         bytes.len()
     );
-
-    println!("Decoded sapling fvk bytes length: {}", bytes.len());
 
     let bytes: &[u8; 128] = bytes
         .as_slice()

@@ -1,5 +1,5 @@
-//! This module defines the NullifierSource trait and its implementations.
-//! NullifierSource provides a streaming interface to read nullifiers from various sources.
+//! This module defines the `ChainNullifiers` trait and its implementations.
+//! `ChainNullifiers` provides a streaming interface to read nullifiers from various sources.
 
 use std::ops::RangeInclusive;
 
@@ -32,5 +32,5 @@ pub trait ChainNullifiers: Sized {
     ///
     /// Dropping the stream cancels the operation. See individual implementations
     /// for details on cleanup behavior.
-    fn into_nullifiers_stream(&self, range: &RangeInclusive<u64>) -> Self::Stream;
+    fn nullifiers_stream(&self, range: &RangeInclusive<u64>) -> Self::Stream;
 }

@@ -55,12 +55,12 @@ pub fn read_mnemonic_secure() -> std::io::Result<String> {
 ///
 /// # Security Warning
 /// Spending keys allow spending funds. Handle with extreme care.
-pub fn mnemonic_to_keys(phrase: &str, network: &Network) -> Result<ZcashKeys> {
+pub fn mnemonic_to_keys(phrase: &str, network: Network) -> Result<ZcashKeys> {
     let m = bip39::Mnemonic::parse_in_normalized(Language::English, phrase)
         .wrap_err("Failed to parse BIP-39 mnemonic phrase")?;
     let seed = m.to_seed("");
 
-    let usk = UnifiedSpendingKey::from_seed(network, &seed, AccountId::ZERO)?;
+    let usk = UnifiedSpendingKey::from_seed(&network, &seed, AccountId::ZERO)?;
 
     let ufvk = usk.to_unified_full_viewing_key();
 

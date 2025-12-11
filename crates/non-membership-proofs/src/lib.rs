@@ -36,7 +36,11 @@ pub enum Pool {
 
 /// Collect stream into separate pools
 ///
-/// TODO: use Vec::capacity
+/// TODO: use `Vec::capacity`
+///
+/// # Errors
+///
+/// Returns an error if the stream returns an error.
 pub async fn partition_by_pool<S, E>(stream: S) -> Result<(Vec<Nullifier>, Vec<Nullifier>), E>
 where
     S: Stream<Item = Result<PoolNullifier, E>>,
@@ -70,9 +74,18 @@ pub enum MerkleTreeError {
 ///
 /// Algorithm:
 /// 1. Sort the nullifiers
-/// 2. Concatenate each consecutive nullifiers to store ranges of nullifiers in leaf nodes.
-/// Merge: [nf1, nf2, nf3, nf4] -> [(nf1, nf2), (nf2, nf3)]
+/// 2. Concatenate each consecutive nullifiers to store ranges of nullifiers in leaf nodes. Merge:
+///    `[nf1, nf2, nf3, nf4]` -> `[(nf1, nf2), (nf2, nf3)]`
 /// 3. Hash each leaf node
+///
+/// # Errors
+///
+/// If the nullifiers are not sorted in ascending order returns `MerkleTreeError::NotSorted`
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::indexing_slicing,
+    reason = "Panics are impossible: we check is_empty() before .expect(), and windows(2) guarantees 2 elements"
+)]
 pub fn build_merkle_tree<H: Hasher>(
     nullifiers: &[Nullifier],
 ) -> Result<MerkleTree<H>, MerkleTreeError> {
@@ -84,35 +97,44 @@ pub fn build_merkle_tree<H: Hasher>(
         return Err(MerkleTreeError::NotSorted);
     }
 
-    let front = H::hash(&build_leaf(&[0u8; NULLIFIER_SIZE], &nullifiers[0]));
-    let back = H::hash(&build_leaf(
-        &nullifiers[nullifiers.len() - 1],
-        &[0xFF; NULLIFIER_SIZE],
-    ));
+    // Safe: we already checked nullifiers is not empty above
+    let first = nullifiers.first().expect("nullifiers is not empty");
+    let last = nullifiers.last().expect("nullifiers is not empty");
+
+    let front = H::hash(&build_leaf(&[0_u8; NULLIFIER_SIZE], first));
+    let back = H::hash(&build_leaf(last, &[0xFF; NULLIFIER_SIZE]));
 
     // Pre-allocate: 1 front + (n-1) windows + 1 back = n + 1
-    let mut leaves = Vec::with_capacity(nullifiers.len() + 1);
+    let mut leaves = Vec::with_capacity(nullifiers.len().saturating_add(1));
 
     leaves.push(front);
-    leaves.extend(
-        nullifiers
-            .windows(2)
-            .map(|w| H::hash(&build_leaf(&w[0], &w[1]))),
-    );
+    leaves.extend(nullifiers.windows(2).map(|w| {
+        // windows(2) guarantees w.len() == 2
+        debug_assert_eq!(
+            w.len(),
+            2,
+            "windows(2) should always yield slices of length 2"
+        );
+        H::hash(&build_leaf(&w[0], &w[1]))
+    }));
     leaves.push(back);
 
     Ok(MerkleTree::from_leaves(&leaves))
 }
 
 /// Build a leaf node from two nullifiers
+#[must_use]
 pub fn build_leaf(nf1: &Nullifier, nf2: &Nullifier) -> [u8; 2 * NULLIFIER_SIZE] {
-    let mut leaf = [0u8; 2 * NULLIFIER_SIZE];
+    let mut leaf = [0_u8; 2 * NULLIFIER_SIZE];
     leaf[..NULLIFIER_SIZE].copy_from_slice(nf1);
     leaf[NULLIFIER_SIZE..].copy_from_slice(nf2);
     leaf
 }
 
 /// Write leaf notes to binary file without intermediate allocation
+///
+/// # Errors
+/// If writing to the file fails
 pub async fn write_raw_nullifiers<P>(notes: &[Nullifier], path: P) -> std::io::Result<()>
 where
     P: AsRef<Path>,
@@ -127,6 +149,9 @@ where
 }
 
 /// Read leaf notes from binary file without intermediate allocation
+///
+/// # Errors
+/// If reading from the file fails
 pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<Nullifier>>
 where
     P: AsRef<Path>,

@@ -49,14 +49,14 @@ pub trait NoteNullifier: Sized {
 }
 
 /// Sapling hiding factor
-#[allow(missing_docs)]
+#[allow(missing_docs, reason = "Fields are self-explanatory")]
 #[derive(Debug)]
 pub struct SaplingHidingFactor<'a> {
     pub personalization: &'a [u8],
 }
 
 /// Orchard hiding factor
-#[allow(missing_docs)]
+#[allow(missing_docs, reason = "Fields are self-explanatory")]
 #[derive(Debug)]
 pub struct OrchardHidingFactor<'a> {
     pub domain: &'a str,
@@ -64,7 +64,7 @@ pub struct OrchardHidingFactor<'a> {
 }
 
 /// A Sapling note with its required position
-#[allow(missing_docs)]
+#[allow(missing_docs, reason = "Fields are self-explanatory")]
 #[derive(Debug)]
 pub struct SaplingNote {
     pub note: sapling::Note,
@@ -88,7 +88,7 @@ impl NoteNullifier for SaplingNote {
     ) -> [u8; 32] {
         let nk = keys.nk(metadata.scope);
         self.note
-            .nf_hiding(&nk, self.position, hiding.personalization)
+            .nf_hiding(nk, self.position, hiding.personalization)
             .0
     }
 }
@@ -123,12 +123,12 @@ pub struct FoundNote<N: NoteNullifier + Debug> {
 
 impl<N: NoteNullifier + Debug> FoundNote<N> {
     /// Note block height
-    pub fn height(&self) -> u64 {
+    pub const fn height(&self) -> u64 {
         self.metadata.height
     }
 
     /// Note scope, internal or external
-    pub fn scope(&self) -> Scope {
+    pub const fn scope(&self) -> Scope {
         self.metadata.scope
     }
 
@@ -158,34 +158,38 @@ pub enum AnyFoundNote {
 
 impl AnyFoundNote {
     /// Note block height
-    pub fn height(&self) -> u64 {
+    #[must_use]
+    pub const fn height(&self) -> u64 {
         match self {
-            AnyFoundNote::Sapling(n) => n.height(),
-            AnyFoundNote::Orchard(n) => n.height(),
+            Self::Sapling(n) => n.height(),
+            Self::Orchard(n) => n.height(),
         }
     }
 
     /// Note scope, internal or external
-    pub fn scope(&self) -> Scope {
+    #[must_use]
+    pub const fn scope(&self) -> Scope {
         match self {
-            AnyFoundNote::Sapling(n) => n.scope(),
-            AnyFoundNote::Orchard(n) => n.scope(),
+            Self::Sapling(n) => n.scope(),
+            Self::Orchard(n) => n.scope(),
         }
     }
 
     /// Derive the nullifier for this note
+    #[must_use]
     pub fn nullifier(&self, keys: &ViewingKeys) -> Option<[u8; 32]> {
         match self {
-            AnyFoundNote::Sapling(n) => keys.sapling.as_ref().map(|key| n.nullifier(key)),
-            AnyFoundNote::Orchard(n) => keys.orchard.as_ref().map(|key| n.nullifier(key)),
+            Self::Sapling(n) => keys.sapling.as_ref().map(|key| n.nullifier(key)),
+            Self::Orchard(n) => keys.orchard.as_ref().map(|key| n.nullifier(key)),
         }
     }
 
     /// Derive the hiding nullifier for this note
-    pub fn pool(&self) -> Pool {
+    #[must_use]
+    pub const fn pool(&self) -> Pool {
         match self {
-            AnyFoundNote::Sapling(_) => Pool::Sapling,
-            AnyFoundNote::Orchard(_) => Pool::Orchard,
+            Self::Sapling(_) => Pool::Sapling,
+            Self::Orchard(_) => Pool::Orchard,
         }
     }
 }

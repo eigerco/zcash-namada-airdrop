@@ -1,7 +1,9 @@
-//! Note decryption module for Zcash CompactBlocks
+//! Note decryption module for Zcash `CompactBlocks`
 //!
-//! Decrypts Sapling and Orchard notes from lightwalletd CompactBlocks
+//! Decrypts Sapling and Orchard notes from lightwalletd `CompactBlocks`
 //! using the provided viewing keys.
+
+use std::num::TryFromIntError;
 
 use light_wallet_api::{CompactBlock, CompactOrchardAction, CompactSaplingOutput, CompactTx};
 use orchard::keys::{FullViewingKey as OrchardFvk, PreparedIncomingViewingKey as OrchardPivk};
@@ -17,6 +19,14 @@ use zcash_note_encryption::{EphemeralKeyBytes, batch};
 use zcash_primitives::consensus::{BlockHeight, Parameters};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zip32::Scope;
+
+/// Error type for decryption operations
+#[derive(Debug, thiserror::Error)]
+pub enum DecryptError {
+    /// Block height exceeds maximum representable value
+    #[error("Block height overflow: {0}")]
+    BlockHeightOverflow(#[from] TryFromIntError),
+}
 
 /// A decrypted note from either the Sapling or Orchard pool
 #[derive(Debug, Clone)]
@@ -59,7 +69,7 @@ pub struct SaplingViewingKeys {
     pub nk_external: NullifierDerivingKey,
     /// Nullifier deriving key for internal scope (needed for nullifier derivation)
     pub nk_internal: NullifierDerivingKey,
-    /// Reference to the DiversifiableFullViewingKey (needed for nullifier derivation)
+    /// Reference to the `DiversifiableFullViewingKey` (needed for nullifier derivation)
     pub dfvk: SaplingDfvk,
 }
 
@@ -81,21 +91,25 @@ pub struct ViewingKeys {
     pub orchard: Option<OrchardViewingKeys>,
 }
 
-/// Decrypt all notes in a CompactBlock belonging to the given viewing keys
+/// Decrypt all notes in a `CompactBlock` belonging to the given viewing keys
 ///
 /// # Arguments
-/// * `block` - The CompactBlock from lightwalletd
+/// * `block` - The `CompactBlock` from lightwalletd
 /// * `keys` - Viewing keys for Sapling and/or Orchard
 /// * `zip212_enforcement` - ZIP-212 enforcement mode (On for blocks after Canopy)
 ///
 /// # Returns
 /// Vector of decrypted notes found in the block
+///
+/// # Errors
+///
+/// Returns an error if the block height exceeds `u32::MAX`.
 pub(crate) fn decrypt_compact_block<P: Parameters>(
     params: &P,
     block: &CompactBlock,
     keys: &ViewingKeys,
-) -> Vec<DecryptedNote> {
-    let block_height = BlockHeight::from_u32(block.height as u32);
+) -> Result<Vec<DecryptedNote>, DecryptError> {
+    let block_height = BlockHeight::try_from(block.height)?;
     let zip212 = zip212_enforcement(params, block_height);
 
     let mut notes = Vec::new();
@@ -116,7 +130,7 @@ pub(crate) fn decrypt_compact_block<P: Parameters>(
         );
     }
 
-    notes
+    Ok(notes)
 }
 
 // ============ Internal implementation ============
@@ -153,12 +167,14 @@ fn decrypt_sapling_notes(
         let results = batch::try_compact_note_decryption(&ivks, &outputs_with_domains);
 
         for (output_index, result) in results.into_iter().enumerate() {
-            if let Some(((note, _), ivk_idx)) = result {
+            if let Some(((note, _), ivk_idx)) = result &&
+                let Some(&scope) = scopes.get(ivk_idx)
+            {
                 decrypted.push(DecryptedSaplingNote {
                     tx_index,
                     output_index,
                     note,
-                    scope: scopes[ivk_idx],
+                    scope,
                 });
             }
         }
@@ -197,12 +213,12 @@ fn decrypt_orchard_notes(
 
         let results = batch::try_compact_note_decryption(&ivks, &actions_with_domains);
 
-        for result in results.into_iter() {
-            if let Some(((note, _), ivk_idx)) = result {
+        for ((note, _), ivk_idx) in results.into_iter().flatten() {
+            if let Some(&scope) = scopes.get(ivk_idx) {
                 decrypted.push(DecryptedOrchardNote {
                     tx_index,
                     note,
-                    scope: scopes[ivk_idx],
+                    scope,
                 });
             }
         }
@@ -250,7 +266,8 @@ fn proto_to_orchard_compact(action: &CompactOrchardAction) -> Option<CompactActi
 // ============ Helper constructors ============
 
 impl SaplingViewingKeys {
-    /// Create from a Sapling DiversifiableFullViewingKey
+    /// Create from a Sapling `DiversifiableFullViewingKey`
+    #[must_use]
     pub fn from_dfvk(dfvk: &SaplingDfvk) -> Self {
         Self {
             external: SaplingPivk::new(&dfvk.to_ivk(Scope::External)),
@@ -262,7 +279,8 @@ impl SaplingViewingKeys {
     }
 
     /// Get the appropriate nullifier deriving key based on scope
-    pub fn nk(&self, scope: Scope) -> &NullifierDerivingKey {
+    #[must_use]
+    pub const fn nk(&self, scope: Scope) -> &NullifierDerivingKey {
         match scope {
             Scope::External => &self.nk_external,
             Scope::Internal => &self.nk_internal,
@@ -271,7 +289,8 @@ impl SaplingViewingKeys {
 }
 
 impl OrchardViewingKeys {
-    /// Create from an Orchard FullViewingKey
+    /// Create from an Orchard `FullViewingKey`
+    #[must_use]
     pub fn from_fvk(fvk: &OrchardFvk) -> Self {
         use orchard::keys::Scope;
         Self {

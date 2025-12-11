@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .to_str()
                 .ok_or_else(|| format!("Invalid UTF-8 in path: {}", proto_dir.display()))?],
         )
-        .map_err(|e| format!("Failed to compile protobuf definitions: {}", e))?;
+        .map_err(|e| format!("Failed to compile protobuf definitions: {e}"))?;
 
     Ok(())
 }

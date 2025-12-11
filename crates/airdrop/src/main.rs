@@ -1,13 +1,13 @@
 //! Airdrop CLI Application
 
 use clap::Parser as _;
-use eyre::{ContextCompat, ensure};
-use futures::StreamExt;
+use eyre::{ContextCompat as _, ensure};
+use futures::StreamExt as _;
 use non_membership_proofs::source::light_walletd::LightWalletd;
 use non_membership_proofs::user_nullifiers::{
     AnyFoundNote, OrchardViewingKeys, SaplingViewingKeys, UserNullifiers as _, ViewingKeys,
 };
-use non_membership_proofs::utils::ReverseBytes;
+use non_membership_proofs::utils::ReverseBytes as _;
 use non_membership_proofs::{
     Nullifier, Pool, build_leaf, build_merkle_tree, partition_by_pool, write_raw_nullifiers,
 };
@@ -42,13 +42,11 @@ impl std::fmt::Debug for NullifierProof {
         let left = self
             .left_nullifier
             .reverse_into_array()
-            .map(hex::encode::<Nullifier>)
-            .unwrap_or_else(|| "<invalid>".to_string());
+            .map_or_else(|| "<invalid>".to_owned(), hex::encode::<Nullifier>);
         let right = self
             .right_nullifier
             .reverse_into_array()
-            .map(hex::encode::<Nullifier>)
-            .unwrap_or_else(|| "<invalid>".to_string());
+            .map_or_else(|| "<invalid>".to_owned(), hex::encode::<Nullifier>);
         f.debug_struct("NullifierProof")
             .field("left_nullifier", &left)
             .field("right_nullifier", &right)
@@ -62,6 +60,10 @@ impl std::fmt::Debug for NullifierProof {
 #[instrument(
     skip(snapshot_nullifiers, merkle_tree, keys, note),
     fields(pool = ?note.pool(), height = note.height())
+)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "Indices are bounded by binary_search result which is always in range [0, len]"
 )]
 fn generate_non_membership_proof<H: Hasher>(
     note: &AnyFoundNote,
@@ -116,7 +118,7 @@ fn generate_non_membership_proof<H: Hasher>(
 
             ensure!(
                 merkle_proof.verify(
-                    merkle_tree.root().unwrap(),
+                    merkle_tree.root().context("Merkle tree has no root")?,
                     &[right],
                     &[leaf_hash],
                     merkle_tree.leaves_len()
@@ -145,7 +147,7 @@ async fn build_airdrop_configuration(
     orchard_snapshot_nullifiers: &str,
 ) -> eyre::Result<()> {
     info!("Fetching nullifiers from chain");
-    let stream = chain_nullifiers::get_nullifiers(&config).await?;
+    let stream = chain_nullifiers::get_nullifiers(config).await?;
     let (mut sapling_nullifiers, mut orchard_nullifiers) = partition_by_pool(stream).await?;
 
     info!(
@@ -183,6 +185,10 @@ async fn build_airdrop_configuration(
 #[instrument(skip_all, fields(
     snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end()),
 ))]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Complex but coherent airdrop claim logic"
+)]
 async fn airdrop_claim(
     config: &CommonArgs,
     sapling_snapshot_nullifiers: &str,
@@ -220,12 +226,16 @@ async fn airdrop_claim(
     info!(pool = "orchard", root = %orchard_tree.root_hex().unwrap_or_default(), "Built merkle tree");
 
     // Connect to lightwalletd
-    let lightwalletd =
-        LightWalletd::connect(config.source.lightwalletd_url.as_ref().unwrap()).await?;
+    let lightwalletd_url = config
+        .source
+        .lightwalletd_url
+        .as_ref()
+        .context("lightwalletd URL is required")?;
+    let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
 
     let viewing_keys = ViewingKeys {
-        sapling: Some(SaplingViewingKeys::from_dfvk(&sapling_fvk)),
-        orchard: Some(OrchardViewingKeys::from_fvk(&orchard_fvk)),
+        sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),
+        orchard: Some(OrchardViewingKeys::from_fvk(orchard_fvk)),
     };
 
     // Scan for notes
@@ -235,15 +245,15 @@ async fn airdrop_claim(
             &TestNetwork,
             *config.snapshot.start(),
             *config.snapshot.end(),
-            &orchard_fvk,
-            &sapling_fvk,
+            orchard_fvk,
+            sapling_fvk,
         )),
         Network::MainNetwork => Box::pin(lightwalletd.user_nullifiers::<MainNetwork>(
             &MainNetwork,
             *config.snapshot.start(),
             *config.snapshot.end(),
-            &orchard_fvk,
-            &sapling_fvk,
+            orchard_fvk,
+            sapling_fvk,
         )),
     };
 
@@ -252,21 +262,18 @@ async fn airdrop_claim(
     while let Some(found_note) = stream.next().await {
         let found_note = found_note?;
 
-        let nullifier = match found_note.nullifier(&viewing_keys) {
-            Some(nf) => nf,
-            None => {
-                debug!(
-                    height = found_note.height(),
-                    "Skipping note: no viewing key"
-                );
-                continue;
-            }
+        let Some(nullifier) = found_note.nullifier(&viewing_keys) else {
+            debug!(
+                height = found_note.height(),
+                "Skipping note: no viewing key"
+            );
+            continue;
         };
 
         info!(
             pool = ?found_note.pool(),
             height = found_note.height(),
-            nullifier = %hex::encode::<Nullifier>(nullifier.reverse_into_array().unwrap()),
+            nullifier = %hex::encode::<Nullifier>(nullifier.reverse_into_array().unwrap_or_default()),
             scope = ?found_note.scope(),
             "Found note"
         );
@@ -343,6 +350,11 @@ async fn main() -> eyre::Result<()> {
         .expect("Failed to install rustls crypto provider");
 
     // Load .env file (fails silently if not found)
+    #[allow(
+        clippy::let_underscore_must_use,
+        clippy::let_underscore_untyped,
+        reason = "Ignoring dotenv result intentionally"
+    )]
     let _ = dotenvy::dotenv();
 
     // Initialize logging
@@ -388,7 +400,7 @@ async fn main() -> eyre::Result<()> {
                 orchard_fvk,
                 sapling_fvk,
                 *birthday_height,
-                &airdrop_claims_output_file,
+                airdrop_claims_output_file,
             )
             .await
         }

@@ -3218,28 +3218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zcash-notes-proof"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dotenvy",
- "eyre",
- "hex",
- "light-wallet-api",
- "orchard",
- "prost",
- "rustls",
- "sapling-crypto",
- "tokio",
- "tonic",
- "tonic-prost",
- "tracing",
- "tracing-subscriber",
- "zcash_note_encryption",
- "zcash_primitives",
-]
-
-[[package]]
 name = "zcash_address"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

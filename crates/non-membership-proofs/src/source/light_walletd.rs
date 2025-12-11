@@ -1,4 +1,4 @@
-//! Connection to lightwalletd grpc service
+//! Connection to lightwalletd gRPC service
 
 use std::ops::RangeInclusive;
 use std::pin::Pin;
@@ -13,7 +13,7 @@ use tonic::transport::Channel;
 use zcash_primitives::consensus::Parameters;
 
 use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
-use crate::user_nullifiers::decrypt_notes::{DecryptedNote, decrypt_compact_block};
+use crate::user_nullifiers::decrypt_notes::{DecryptError, DecryptedNote, decrypt_compact_block};
 use crate::user_nullifiers::{
     AnyFoundNote, FoundNote, NoteMetadata, OrchardViewingKeys, SaplingNote, SaplingViewingKeys,
     UserNullifiers, ViewingKeys,
@@ -22,7 +22,11 @@ use crate::{Nullifier, Pool};
 
 /// Errors that can occur when interacting with lightwalletd
 #[derive(Debug, thiserror::Error)]
-pub enum LightWalletdError {
+#[allow(
+    clippy::error_impl_error,
+    reason = "Module-scoped Error type is idiomatic"
+)]
+pub enum Error {
     /// gRPC error from lightwalletd
     #[error("gRPC: {0}")]
     Grpc(#[from] tonic::Status),
@@ -32,9 +36,12 @@ pub enum LightWalletdError {
     /// Invalid nullifier length
     #[error("Invalid nullifier length: expected 32, got {0}")]
     InvalidLength(usize),
+    /// Decryption error
+    #[error("Decryption error: {0}")]
+    Decrypt(#[from] DecryptError),
 }
 
-/// A lightwalletd client
+/// A lightwalletd client for streaming blockchain data
 pub struct LightWalletd {
     client: CompactTxStreamerClient<Channel>,
 }
@@ -42,11 +49,16 @@ pub struct LightWalletd {
 impl LightWalletd {
     /// Connect to a lightwalletd endpoint
     ///
-    /// Prerequisite:
-    /// rustls::crypto::ring::default_provider().install_default() needs to be called before this
-    /// function is called.
-    pub async fn connect(endpoint: &str) -> Result<Self, LightWalletdError> {
-        let client = CompactTxStreamerClient::connect(endpoint.to_string()).await?;
+    /// # Prerequisite
+    ///
+    /// `rustls::crypto::ring::default_provider().install_default()` needs to be called
+    /// before this function is called.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection to the endpoint fails.
+    pub async fn connect(endpoint: &str) -> Result<Self, Error> {
+        let client = CompactTxStreamerClient::connect(endpoint.to_owned()).await?;
 
         Ok(Self { client })
     }
@@ -60,10 +72,10 @@ impl LightWalletd {
 /// will be closed, though the server may continue processing briefly until it
 /// detects the disconnect. No explicit cancellation signal is sent.
 impl ChainNullifiers for LightWalletd {
-    type Error = LightWalletdError;
+    type Error = Error;
     type Stream = Pin<Box<dyn Stream<Item = Result<PoolNullifier, Self::Error>> + Send>>;
 
-    fn into_nullifiers_stream(&self, range: &RangeInclusive<u64>) -> Self::Stream {
+    fn nullifiers_stream(&self, range: &RangeInclusive<u64>) -> Self::Stream {
         let request = BlockRange {
             start: Some(BlockId {
                 height: *range.start(),
@@ -90,7 +102,7 @@ impl ChainNullifiers for LightWalletd {
                     for spend in tx.spends {
                         let nullifier: Nullifier = spend.nf
                             .try_into()
-                            .map_err(|v: Vec<u8>| LightWalletdError::InvalidLength(v.len()))?;
+                            .map_err(|v: Vec<u8>| Error::InvalidLength(v.len()))?;
 
                         yield PoolNullifier {
                             pool: Pool::Sapling,
@@ -102,7 +114,7 @@ impl ChainNullifiers for LightWalletd {
                     for action in tx.actions {
                         let nullifier: Nullifier = action.nullifier
                             .try_into()
-                            .map_err(|v: Vec<u8>| LightWalletdError::InvalidLength(v.len()))?;
+                            .map_err(|v: Vec<u8>| Error::InvalidLength(v.len()))?;
 
                         yield PoolNullifier {
                             pool: Pool::Orchard,
@@ -116,7 +128,7 @@ impl ChainNullifiers for LightWalletd {
 }
 
 impl UserNullifiers for LightWalletd {
-    type Error = LightWalletdError;
+    type Error = Error;
     type Stream = Pin<Box<dyn Stream<Item = Result<AnyFoundNote, Self::Error>> + Send>>;
 
     fn user_nullifiers<P: Parameters + Clone + Send + 'static>(
@@ -159,24 +171,20 @@ impl UserNullifiers for LightWalletd {
             while let Some(block) = stream.message().await? {
                 // Get the Sapling commitment tree size at the END of this block
                 // This is reported in chain_metadata
-                // TODO: validate this
                 let sapling_tree_size_end = block
                     .chain_metadata
                     .as_ref()
-                    .map(|m| m.sapling_commitment_tree_size)
-                    .unwrap_or(0);
+                    .map_or(0, |m| m.sapling_commitment_tree_size);
 
-                // TODO: check block in place from tokio
-                // request multithread run time
-                let notes = decrypt_compact_block(&network, &block, &keys);
+                let notes = decrypt_compact_block(&network, &block, &keys)?;
 
                 // Build a map of cumulative Sapling outputs per transaction
                 // This helps us calculate the position of each output in the commitment tree
                 let mut tx_sapling_start_positions: Vec<u32> = Vec::with_capacity(block.vtx.len());
-                let mut cumulative = 0u32;
+                let mut cumulative = 0_u32;
                 for tx in &block.vtx {
                     tx_sapling_start_positions.push(cumulative);
-                    cumulative += tx.outputs.len() as u32;
+                    cumulative = cumulative.saturating_add(u32::try_from(tx.outputs.len()).unwrap_or(u32::MAX));
                 }
 
                 // The tree size at the start of the block is the end size minus all outputs in this block
@@ -186,8 +194,7 @@ impl UserNullifiers for LightWalletd {
                     match note {
                         DecryptedNote::Orchard(orchard_note) => {
                             let txid = block.vtx.get(orchard_note.tx_index)
-                                .map(|tx| tx.txid.clone())
-                                .unwrap_or_else(|| block.hash.clone());
+                                .map_or_else(Vec::new, |tx| tx.txid.clone());
 
                             yield AnyFoundNote::Orchard(FoundNote::<orchard::Note> {
                                 note: orchard_note.note,
@@ -205,13 +212,12 @@ impl UserNullifiers for LightWalletd {
                                 .get(sapling_note.tx_index)
                                 .copied()
                                 .unwrap_or(0);
-                            let position = sapling_tree_size_start as u64
-                                + tx_start as u64
-                                + sapling_note.output_index as u64;
+                            let position = u64::from(sapling_tree_size_start)
+                                .saturating_add(u64::from(tx_start))
+                                .saturating_add(u64::try_from(sapling_note.output_index).unwrap_or(u64::MAX));
 
                             let txid = block.vtx.get(sapling_note.tx_index)
-                                .map(|tx| tx.txid.clone())
-                                .unwrap_or_else(|| block.hash.clone());
+                                .map_or_else(Vec::new, |tx| tx.txid.clone());
 
                             yield AnyFoundNote::Sapling(FoundNote::<SaplingNote> {
                                 note: SaplingNote {

@@ -9,7 +9,6 @@ edition = "2024"
 light-wallet-api = { path = "crates/light-wallet-api" }
 mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
 non-membership-proofs = { path = "crates/non-membership-proofs" }
-zcash-notes-proof = { path = "crates/zcash-notes-proof" }
 
 async-stream = "0.3.6"
 bip39 = "2.2.0"

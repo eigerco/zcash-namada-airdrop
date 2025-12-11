@@ -16,20 +16,25 @@ use std::pin::Pin;
 use async_stream::try_stream;
 use futures_core::Stream;
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt as _, BufReader};
 
 use crate::Pool;
 use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
 
-/// Read nullifiers from local files
-pub struct FileSource {
+/// Source for reading nullifiers from local binary files
+pub struct Source {
     sapling_path: PathBuf,
     orchard_path: PathBuf,
 }
 
-impl FileSource {
-    /// Create a new FileSource with the given file paths
-    pub fn new(sapling_path: PathBuf, orchard_path: PathBuf) -> Self {
+impl Source {
+    /// Create a new file `Source` with the given file paths
+    ///
+    /// # Arguments
+    /// * `sapling_path` - Path to the Sapling nullifiers binary file
+    /// * `orchard_path` - Path to the Orchard nullifiers binary file
+    #[must_use]
+    pub const fn new(sapling_path: PathBuf, orchard_path: PathBuf) -> Self {
         Self {
             sapling_path,
             orchard_path,
@@ -37,18 +42,18 @@ impl FileSource {
     }
 }
 
-impl ChainNullifiers for FileSource {
+impl ChainNullifiers for Source {
     type Error = io::Error;
     type Stream = Pin<Box<dyn Stream<Item = Result<PoolNullifier, Self::Error>> + Send>>;
 
-    fn into_nullifiers_stream(&self, _range: &RangeInclusive<u64>) -> Self::Stream {
+    fn nullifiers_stream(&self, _range: &RangeInclusive<u64>) -> Self::Stream {
         let sapling_path = self.sapling_path.clone();
         let orchard_path = self.orchard_path.clone();
 
         Box::pin(try_stream! {
             const NULLIFIER_SIZE: usize = 32;
             const BUF_NULLIFIERS: usize = 1024;
-            let mut buf = vec![0u8; NULLIFIER_SIZE * BUF_NULLIFIERS];
+            let mut buf = vec![0_u8; NULLIFIER_SIZE.saturating_mul(BUF_NULLIFIERS)];
 
             for (file, pool) in [
                 (sapling_path, Pool::Sapling),
@@ -56,31 +61,40 @@ impl ChainNullifiers for FileSource {
             ] {
                 let file = File::open(file).await?;
                 let mut reader = BufReader::new(file);
-                let mut leftover = 0usize; // bytes carried over from previous read
+                let mut leftover = 0_usize; // bytes carried over from previous read
 
                 loop {
                     // Read into buffer after any leftover bytes
-                    let n = reader.read(&mut buf[leftover..]).await?;
+                    let read_buf = buf.get_mut(leftover..).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "leftover exceeds buffer size")
+                    })?;
+                    let n = reader.read(read_buf).await?;
                     if n == 0 {
                         // End of file - check for incomplete nullifier
                         if leftover > 0 {
                             Err(io::Error::new(
                                 io::ErrorKind::UnexpectedEof,
                                 format!(
-                                    "file has {} trailing bytes (not a multiple of {})",
-                                    leftover, NULLIFIER_SIZE
+                                    "file has {leftover} trailing bytes (not a multiple of {NULLIFIER_SIZE})"
                                 ),
                             ))?;
                         }
                         break;
                     }
 
-                    let total = leftover + n;
-                    let complete_bytes = (total / NULLIFIER_SIZE) * NULLIFIER_SIZE;
+                    let total = leftover.saturating_add(n);
+                    // Integer division is intentional here - we want floor division
+                    let complete_count = total.checked_div(NULLIFIER_SIZE).unwrap_or(0);
+                    let complete_bytes = complete_count.saturating_mul(NULLIFIER_SIZE);
 
                     // Process complete nullifiers
-                    for chunk in buf[..complete_bytes].chunks_exact(NULLIFIER_SIZE) {
-                        let nullifier: [u8; 32] = chunk.try_into().unwrap();
+                    let complete_slice = buf.get(..complete_bytes).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "complete_bytes exceeds buffer")
+                    })?;
+                    for chunk in complete_slice.chunks_exact(NULLIFIER_SIZE) {
+                        let nullifier: [u8; 32] = chunk.try_into().map_err(|_err| {
+                            io::Error::new(io::ErrorKind::InvalidData, "chunk size mismatch")
+                        })?;
                         yield PoolNullifier {
                             pool,
                             nullifier,
@@ -88,7 +102,7 @@ impl ChainNullifiers for FileSource {
                     }
 
                     // Move leftover bytes to the start of buffer
-                    leftover = total - complete_bytes;
+                    leftover = total.saturating_sub(complete_bytes);
                     if leftover > 0 {
                         buf.copy_within(complete_bytes..total, 0);
                     }
