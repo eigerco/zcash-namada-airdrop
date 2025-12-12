@@ -1,5 +1,7 @@
 # zcash-namada-airdrop
 
+> **⚠️ Work in Progress**: This project is under active development and not yet complete.
+
 A toolkit for generating non-membership proofs for Zcash shielded assets as part of the Namada airdrop. This allows Zcash users with unspent shielded notes (Sapling or Orchard) to prove they held funds at a specific snapshot height without revealing their nullifiers.
 
 ## Setup Instructions
