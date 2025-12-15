@@ -50,14 +50,6 @@
         pre-commit
       ];
 
-      # Documentation generation tools
-      docTools = with pkgs; [
-        plantuml
-        mkdocs
-        python312Packages.plantuml-markdown
-        python312Packages.mkdocs-mermaid2-plugin
-      ];
-
       # Environment variables required for each toolchain
       envs = {
         rust = {
@@ -108,7 +100,7 @@
     {
       # Development shell
       devShells.default = pkgs.mkShell {
-        buildInputs = [ rustToolchain ] ++ devTools ++ docTools;
+        buildInputs = [ rustToolchain ] ++ devTools;
 
         inherit (envs.rust)
           RUST_SRC_PATH
