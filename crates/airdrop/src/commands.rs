@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use eyre::{ContextCompat as _, ensure};
 use futures::StreamExt as _;
 use non_membership_proofs::source::light_walletd::LightWalletd;
@@ -10,7 +12,7 @@ use non_membership_proofs::{
 };
 use rs_merkle::algorithms::Sha256;
 use tracing::{debug, info, instrument};
-use zcash_primitives::consensus::{MainNetwork, Network, TestNetwork};
+use zcash_protocol::consensus::{MainNetwork, Network, TestNetwork};
 
 use crate::airdrop_configuration;
 use crate::chain_nullifiers::{self, load_nullifiers_from_file};
@@ -22,9 +24,9 @@ use crate::proof::generate_non_membership_proof;
 ))]
 pub(crate) async fn build_airdrop_configuration(
     config: &CommonArgs,
-    configuration_output_file: &str,
-    sapling_snapshot_nullifiers: &str,
-    orchard_snapshot_nullifiers: &str,
+    configuration_output_file: impl AsRef<Path>,
+    sapling_snapshot_nullifiers: impl AsRef<Path>,
+    orchard_snapshot_nullifiers: impl AsRef<Path>,
 ) -> eyre::Result<()> {
     info!("Fetching nullifiers from chain");
     let stream = chain_nullifiers::get_nullifiers(config).await?;
@@ -39,11 +41,11 @@ pub(crate) async fn build_airdrop_configuration(
     sapling_nullifiers.sort_unstable();
     orchard_nullifiers.sort_unstable();
 
-    write_raw_nullifiers(&sapling_nullifiers, sapling_snapshot_nullifiers).await?;
-    info!(file = %sapling_snapshot_nullifiers, pool = "sapling", "Saved nullifiers");
+    write_raw_nullifiers(&sapling_nullifiers, &sapling_snapshot_nullifiers).await?;
+    info!(file = %sapling_snapshot_nullifiers.as_ref().display(), pool = "sapling", "Saved nullifiers");
 
-    write_raw_nullifiers(&orchard_nullifiers, orchard_snapshot_nullifiers).await?;
-    info!(file = %orchard_snapshot_nullifiers, pool = "orchard", "Saved nullifiers");
+    write_raw_nullifiers(&orchard_nullifiers, &orchard_snapshot_nullifiers).await?;
+    info!(file = %orchard_snapshot_nullifiers.as_ref().display(), pool = "orchard", "Saved nullifiers");
 
     let sapling_tree = build_merkle_tree::<Sha256>(&sapling_nullifiers)?;
     info!(pool = "sapling", root = %sapling_tree.root_hex().unwrap_or_default(), "Built merkle tree");
@@ -55,10 +57,10 @@ pub(crate) async fn build_airdrop_configuration(
         sapling_tree.root_hex().as_deref(),
         orchard_tree.root_hex().as_deref(),
     )
-    .export_config(configuration_output_file)
+    .export_config(&configuration_output_file)
     .await?;
 
-    info!(file = %configuration_output_file, "Exported configuration");
+    info!(file = %configuration_output_file.as_ref().display(), "Exported configuration");
     Ok(())
 }
 
@@ -71,27 +73,28 @@ pub(crate) async fn build_airdrop_configuration(
 )]
 pub(crate) async fn airdrop_claim(
     config: &CommonArgs,
-    sapling_snapshot_nullifiers: &str,
-    orchard_snapshot_nullifiers: &str,
+    sapling_snapshot_nullifiers: impl AsRef<Path>,
+    orchard_snapshot_nullifiers: impl AsRef<Path>,
     orchard_fvk: &orchard::keys::FullViewingKey,
     sapling_fvk: &sapling::zip32::DiversifiableFullViewingKey,
     birthday_height: u64,
-    airdrop_claims_output_file: &str,
+    airdrop_claims_output_file: impl AsRef<Path>,
 ) -> eyre::Result<()> {
     ensure!(
         birthday_height <= *config.snapshot.end(),
         "Birthday height cannot be greater than the snapshot end height"
     );
 
-    ensure!(
-        config.source.lightwalletd_url.is_some(),
-        "lightwalletd URL must be provided"
-    );
+    let lightwalletd_url = config
+        .source
+        .lightwalletd_url
+        .as_ref()
+        .context("lightwalletd URL is required")?;
 
     // Load snapshot
     info!("Loading snapshot nullifiers");
-    let sapling_nullifiers = load_nullifiers_from_file(sapling_snapshot_nullifiers).await?;
-    let orchard_nullifiers = load_nullifiers_from_file(orchard_snapshot_nullifiers).await?;
+    let sapling_nullifiers = load_nullifiers_from_file(&sapling_snapshot_nullifiers).await?;
+    let orchard_nullifiers = load_nullifiers_from_file(&orchard_snapshot_nullifiers).await?;
 
     info!(
         sapling = sapling_nullifiers.len(),
@@ -106,11 +109,6 @@ pub(crate) async fn airdrop_claim(
     info!(pool = "orchard", root = %orchard_tree.root_hex().unwrap_or_default(), "Built merkle tree");
 
     // Connect to lightwalletd
-    let lightwalletd_url = config
-        .source
-        .lightwalletd_url
-        .as_ref()
-        .context("lightwalletd URL is required")?;
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
 
     let viewing_keys = ViewingKeys {
@@ -123,14 +121,14 @@ pub(crate) async fn airdrop_claim(
     let mut stream = match config.network {
         Network::TestNetwork => Box::pin(lightwalletd.user_nullifiers::<TestNetwork>(
             &TestNetwork,
-            *config.snapshot.start(),
+            (*config.snapshot.start()).max(birthday_height),
             *config.snapshot.end(),
             orchard_fvk,
             sapling_fvk,
         )),
         Network::MainNetwork => Box::pin(lightwalletd.user_nullifiers::<MainNetwork>(
             &MainNetwork,
-            *config.snapshot.start(),
+            (*config.snapshot.start()).max(birthday_height),
             *config.snapshot.end(),
             orchard_fvk,
             sapling_fvk,
@@ -161,14 +159,25 @@ pub(crate) async fn airdrop_claim(
         found_notes.push(found_note);
     }
 
-    let sapling_count = found_notes
+    let (sapling_count, orchard_count) = found_notes
         .iter()
-        .filter(|n| n.pool() == Pool::Sapling)
-        .count();
-    let orchard_count = found_notes
-        .iter()
-        .filter(|n| n.pool() == Pool::Orchard)
-        .count();
+        .try_fold::<_, _, eyre::Result<_, eyre::Report>>(
+            (0_usize, 0_usize),
+            |(s_count, o_count), n| match n.pool() {
+                Pool::Sapling => Ok((
+                    s_count
+                        .checked_add(1_usize)
+                        .context("Sapling note count overflow")?,
+                    o_count,
+                )),
+                Pool::Orchard => Ok((
+                    s_count,
+                    o_count
+                        .checked_add(1_usize)
+                        .context("Orchard note count overflow")?,
+                )),
+            },
+        )?;
 
     info!(
         total = found_notes.len(),
@@ -211,10 +220,10 @@ pub(crate) async fn airdrop_claim(
     }
 
     let json = serde_json::to_string_pretty(&proofs)?;
-    tokio::fs::write(airdrop_claims_output_file, json).await?;
+    tokio::fs::write(&airdrop_claims_output_file, json).await?;
 
     info!(
-        file = %airdrop_claims_output_file,
+        file = %airdrop_claims_output_file.as_ref().display(),
         count = proofs.len(),
         "Proofs written"
     );

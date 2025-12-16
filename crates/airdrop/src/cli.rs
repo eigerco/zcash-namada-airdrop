@@ -1,12 +1,13 @@
 //! Command-line interface for airdrop cli application
 
 use std::ops::RangeInclusive;
+use std::path::PathBuf;
 
 use clap::Parser;
 use eyre::{Context as _, Result, ensure, eyre};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
-use zcash_primitives::consensus::Network;
+use zcash_protocol::consensus::Network;
 
 #[derive(Debug, Parser)]
 #[command(name = "airdrop")]
@@ -32,21 +33,21 @@ pub(crate) enum Commands {
             env = "CONFIGURATION_OUTPUT_FILE",
             default_value = "airdrop_configuration.json"
         )]
-        configuration_output_file: String,
+        configuration_output_file: PathBuf,
         /// Sapling snapshot nullifiers. This file stores the sapling nullifiers of the snapshot.
         #[arg(
             long,
             env = "SAPLING_SNAPSHOT_NULLIFIERS",
             default_value = "sapling-snapshot-nullifiers.bin"
         )]
-        sapling_snapshot_nullifiers: String,
+        sapling_snapshot_nullifiers: PathBuf,
         /// Orchard snapshot nullifiers. This file stores the orchard nullifiers of the snapshot.
         #[arg(
             long,
             env = "ORCHARD_SNAPSHOT_NULLIFIERS",
             default_value = "orchard-snapshot-nullifiers.bin"
         )]
-        orchard_snapshot_nullifiers: String,
+        orchard_snapshot_nullifiers: PathBuf,
     },
     /// Prepare the airdrop claim.
     ///
@@ -57,21 +58,21 @@ pub(crate) enum Commands {
         #[command(flatten)]
         config: CommonArgs,
         /// Sapling snapshot nullifiers. This file contains the sapling nullifiers of the snapshot.
-        /// Its used to recreate the Merkle tree of the snapshot for sapling notes.
+        /// It's used to recreate the Merkle tree of the snapshot for sapling notes.
         #[arg(
             long,
             env = "SAPLING_SNAPSHOT_NULLIFIERS",
             default_value = "sapling-snapshot-nullifiers.bin"
         )]
-        sapling_snapshot_nullifiers: String,
+        sapling_snapshot_nullifiers: PathBuf,
         /// Orchard snapshot nullifiers. This file contains the orchard nullifiers of the snapshot.
-        /// Its used to recreate the Merkle tree of the snapshot for orchard notes.
+        /// It's used to recreate the Merkle tree of the snapshot for orchard notes.
         #[arg(
             long,
             env = "ORCHARD_SNAPSHOT_NULLIFIERS",
             default_value = "orchard-snapshot-nullifiers.bin"
         )]
-        orchard_snapshot_nullifiers: String,
+        orchard_snapshot_nullifiers: PathBuf,
 
         /// Orchard Full Viewing Key (hex-encoded, 96 bytes)
         #[arg(short = 'o', long, env = "ORCHARD_FVK", value_parser = parse_orchard_fvk)]
@@ -91,7 +92,7 @@ pub(crate) enum Commands {
             env = "AIRDROP_CLAIMS_OUTPUT_FILE",
             default_value = "airdrop_claims.json"
         )]
-        airdrop_claims_output_file: String,
+        airdrop_claims_output_file: PathBuf,
     },
 }
 
@@ -170,7 +171,16 @@ fn parse_range(s: &str) -> Result<RangeInclusive<u64>> {
     let (start, end) = s
         .split_once("..=")
         .ok_or_else(|| eyre!("Invalid range format. Use START..=END"))?;
-    Ok(start.parse()?..=end.parse()?)
+
+    let start = start.parse::<u64>()?;
+    let end = end.parse::<u64>()?;
+
+    ensure!(
+        start <= end,
+        "Range start must be less than or equal to end"
+    );
+
+    Ok(start..=end)
 }
 
 fn parse_network(s: &str) -> Result<Network> {

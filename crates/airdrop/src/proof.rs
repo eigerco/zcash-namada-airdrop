@@ -53,6 +53,13 @@ pub(crate) fn generate_non_membership_proof<H: Hasher>(
     merkle_tree: &MerkleTree<H>,
     keys: &ViewingKeys,
 ) -> eyre::Result<Option<NullifierProof>> {
+    ensure!(
+        !snapshot_nullifiers.is_empty() &&
+            snapshot_nullifiers.is_sorted() &&
+            merkle_tree.leaves_len() == snapshot_nullifiers.len().saturating_add(1_usize),
+        "Snapshot nullifiers are not sorted"
+    );
+
     let nullifier = note
         .nullifier(keys)
         .context("Failed to get nullifier from note")?;

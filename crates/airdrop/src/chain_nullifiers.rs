@@ -43,7 +43,9 @@ pub(crate) async fn load_nullifiers_from_file(
     debug!("Loading nullifiers from file");
 
     let mut nullifiers = non_membership_proofs::read_raw_nullifiers(path).await?;
-    nullifiers.sort_unstable();
+    if !nullifiers.is_sorted() {
+        nullifiers.sort_unstable();
+    }
 
     debug!("Read {} nullifiers from disk", nullifiers.len());
 
