@@ -31,6 +31,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ).into());
     }
 
+    // Tell Cargo to rerun if proto files change
+    println!("cargo:rerun-if-changed={}", compact_formats.display());
+    println!("cargo:rerun-if-changed={}", service.display());
+    println!("cargo:rerun-if-changed=build.rs");
+
+    // Also rerun if the proto directory structure changes
+    println!("cargo:rerun-if-changed={}", proto_dir.display());
+
     tonic_prost_build::configure()
         .build_server(false)
         .compile_protos(
