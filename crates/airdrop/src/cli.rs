@@ -99,7 +99,7 @@ pub(crate) enum Commands {
 #[derive(Debug, clap::Args)]
 pub(crate) struct CommonArgs {
     /// Network to use (mainnet or testnet)
-    #[arg(long, env = "NETWORK", default_value = "testnet", value_parser = parse_network)]
+    #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
     pub network: Network,
 
     /// Block range for the snapshot (e.g., 1000000..=1100000). Range is inclusive.
