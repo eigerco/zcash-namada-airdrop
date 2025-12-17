@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         let account_idx = {
             let input = rpassword::prompt_password("Enter account index: ")?;
             if input.trim().is_empty() {
-                "0".to_string()
+                "0".to_owned()
             } else {
                 input
             }

@@ -10,7 +10,7 @@ use light_wallet_api::{BlockId, BlockRange};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::Channel;
-use zcash_primitives::consensus::Parameters;
+use zcash_protocol::consensus::Parameters;
 
 use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
 use crate::user_nullifiers::decrypt_notes::{DecryptError, DecryptedNote, decrypt_compact_block};

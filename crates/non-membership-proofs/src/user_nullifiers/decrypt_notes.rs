@@ -16,8 +16,8 @@ use sapling::note_encryption::{
 };
 use sapling::zip32::DiversifiableFullViewingKey as SaplingDfvk;
 use zcash_note_encryption::{EphemeralKeyBytes, batch};
-use zcash_primitives::consensus::{BlockHeight, Parameters};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
+use zcash_protocol::consensus::{BlockHeight, Parameters};
 use zip32::Scope;
 
 /// Error type for decryption operations

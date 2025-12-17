@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use futures_core::Stream;
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
-use zcash_primitives::consensus::Parameters;
+use zcash_protocol::consensus::Parameters;
 
 use crate::Pool;
 

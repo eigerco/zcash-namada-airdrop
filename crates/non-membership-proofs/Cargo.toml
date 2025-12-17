@@ -26,6 +26,7 @@ tokio = { workspace = true, features = [
 tonic = { workspace = true, features = ["tls-webpki-roots"] }
 zcash_note_encryption = { workspace = true }
 zcash_primitives = { workspace = true }
+zcash_protocol = { workspace = true }
 zip32 = "0.2"
 
 [lints]

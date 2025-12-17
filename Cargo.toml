@@ -11,9 +11,9 @@ mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
 non-membership-proofs = { path = "crates/non-membership-proofs" }
 
 async-stream = "0.3.6"
-bip39 = "2.2.0"
+bip39 = "2.2.2"
 bytemuck = "1.24.0"
-clap = "4.5.51"
+clap = "4.5.53"
 clap_derive = "4.5.49"
 config = { version = "0.15.19", default-features = false }
 console-subscriber = "0.5.0"
@@ -39,12 +39,12 @@ tokio = "1.48.0"
 tonic = "0.14.2"
 tonic-prost = "0.14.2"
 tonic-prost-build = "0.14.2"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.20"
+tracing = "0.1.43"
+tracing-subscriber = "0.3.22"
 zcash_keys = "0.12.0"
-zcash_note_encryption = "0.4"
-zcash_primitives = "0.26.1"
-zcash_protocol = "0.7.1"
+zcash_note_encryption = "0.4.1"
+zcash_primitives = "0.26.3"
+zcash_protocol = "0.7.2"
 zip32 = "0.2.1"
 
 [workspace.lints.clippy]

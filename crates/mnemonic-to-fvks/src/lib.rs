@@ -2,7 +2,7 @@
 
 use bip39::Language;
 use eyre::{Result, WrapErr as _};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret as _, SecretBox};
 use zcash_keys::keys::{UnifiedFullViewingKey, UnifiedSpendingKey};
 use zcash_protocol::consensus::Network;
 use zip32::AccountId;
