@@ -49,25 +49,27 @@ pub trait NoteNullifier: Sized {
 }
 
 /// Sapling hiding factor
-#[allow(missing_docs, reason = "Skip internal documentation")]
 #[derive(Debug)]
 pub struct SaplingHidingFactor<'a> {
+    /// Personalization bytes, are used to derive the hiding sapling nullifier
     pub personalization: &'a [u8],
 }
 
 /// Orchard hiding factor
-#[allow(missing_docs, reason = "Skip internal documentation")]
 #[derive(Debug)]
 pub struct OrchardHidingFactor<'a> {
+    /// Domain separator for the hiding orchard nullifier
     pub domain: &'a str,
+    /// Tag bytes, are used to derive the hiding orchard nullifier
     pub tag: &'a [u8],
 }
 
 /// A Sapling note with its required position
-#[allow(missing_docs, reason = "Fields are self-explanatory")]
 #[derive(Debug)]
 pub struct SaplingNote {
+    /// Sapling note
     pub note: sapling::Note,
+    /// Note position in the commitment tree
     pub position: u64,
 }
 
