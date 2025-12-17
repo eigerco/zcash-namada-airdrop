@@ -68,26 +68,30 @@ pub enum MerkleTreeError {
     NotSorted,
 }
 
-/// Build a Merkle tree from the given nullifiers to produce non-membership proofs
+/// Builds a Merkle tree from a sorted slice of nullifiers for non-membership proofs.
 ///
-/// Algorithm:
-/// 1. Sort the nullifiers
-/// 2. Concatenate each consecutive nullifiers to store ranges of nullifiers in leaf nodes. Merge:
-///    `[nf1, nf2, nf3, nf4]` -> `[(nf1, nf2), (nf2, nf3)]`
-/// 3. Hash each leaf node
+/// # Arguments
+///
+/// * `nullifiers` - A slice of nullifiers, which must be sorted in ascending order.
+///
+/// # Returns
+///
+/// Returns a `MerkleTree` constructed from the nullifiers, or an error if the input is not sorted.
 ///
 /// # Errors
 ///
-/// If the nullifiers are not sorted in ascending order returns `MerkleTreeError::NotSorted`
+/// Returns [`MerkleTreeError::NotSorted`] if the input slice is not sorted in ascending order.
 ///
-/// # Panics
-/// If the nullifiers slice is empty when accessing first/last elements.
-/// This is prevented by the `is_empty()` check at the start of the function.
-/// Also panics when indexing into `windows(2)` slices,
-/// but this is prevented by the guarantee
+/// # Algorithm
+///
+/// - Adds a "front" leaf node representing the range from 0 to the first nullifier.
+/// - Adds leaf nodes for each consecutive pair of nullifiers.
+/// - Adds a "back" leaf node representing the range from the last nullifier to 0xFF..FF.
+/// - Hashes each leaf node and constructs the Merkle tree from these hashes.
 #[allow(
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
+    clippy::missing_panics_doc,
     reason = "Panics are impossible: we check is_empty() before .expect(), and windows(2) guarantees 2 elements"
 )]
 pub fn build_merkle_tree<H: Hasher>(
