@@ -1650,10 +1650,10 @@ dependencies = [
  "eyre",
  "hex",
  "rpassword",
+ "secrecy 0.10.3",
  "zcash_keys",
- "zcash_primitives",
  "zcash_protocol",
- "zeroize",
+ "zip32",
 ]
 
 [[package]]
@@ -1691,6 +1691,7 @@ dependencies = [
  "tonic-prost-build",
  "zcash_note_encryption",
  "zcash_primitives",
+ "zcash_protocol",
  "zip32",
 ]
 
@@ -2375,6 +2376,15 @@ name = "secrecy"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
 dependencies = [
  "zeroize",
 ]
@@ -3367,7 +3377,7 @@ dependencies = [
  "orchard",
  "rand_core",
  "sapling-crypto",
- "secrecy",
+ "secrecy 0.8.0",
  "subtle",
  "tracing",
  "zcash_address",

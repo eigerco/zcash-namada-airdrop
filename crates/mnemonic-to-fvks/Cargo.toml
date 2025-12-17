@@ -10,10 +10,10 @@ dotenvy = { workspace = true }
 eyre = { workspace = true }
 hex = { workspace = true }
 rpassword = { workspace = true }
+secrecy = { workspace = true }
 zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
-zcash_primitives = { workspace = true }
 zcash_protocol = { workspace = true }
-zeroize = { workspace = true }
+zip32 = { workspace = true }
 
 [lints]
 workspace = true

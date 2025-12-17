@@ -3,22 +3,17 @@
 
 use clap::Parser;
 use eyre::{Context as _, Result, bail};
-use mnemonic_to_fvks::{mnemonic_to_keys, read_mnemonic_secure};
+use mnemonic_to_fvks::mnemonic_to_keys;
 use zcash_protocol::consensus::Network;
-use zeroize::Zeroize as _;
 
 #[derive(Parser)]
 #[command(name = "mnemonic-to-fvks")]
 #[command(about = "A utility to convert a Zcash mnemonic to Full Viewing Keys and Spending Keys", long_about = None)]
 struct Cli {
-    /// Specify the coin type for key derivation. Default is Testnet. Available options: [mainnet,
+    /// Specify the coin type for key derivation. Default is Mainnet. Available options: [mainnet,
     /// testnet, regtest]
-    #[arg(long, env = "NETWORK", default_value = "testnet", value_parser = parse_network)]
+    #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
     network: Network,
-
-    /// Show spending keys (WARNING: these can spend funds!)
-    #[arg(long, default_value_t = false)]
-    show_spending_keys: bool,
 }
 
 fn parse_network(s: &str) -> Result<Network> {
@@ -28,6 +23,8 @@ fn parse_network(s: &str) -> Result<Network> {
         _ => bail!("Invalid network type: {s}. Use 'mainnet', 'testnet', or 'regtest'."),
     }
 }
+
+// TODO: check mlock to avoid sensitive data in swap
 
 #[allow(clippy::print_stdout, reason = "CLI utility")]
 fn main() -> Result<()> {
@@ -40,13 +37,34 @@ fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
 
-    let mut mnemonic = read_mnemonic_secure()
-        .wrap_err("Failed to read mnemonic from environment or user input")?;
+    let keys = {
+        let mnemonic =
+            rpassword::prompt_password("Enter mnemonic: ").map(secrecy::SecretString::from)?;
 
-    println!("Deriving all Zcash keys from mnemonic...\n");
-    let keys = mnemonic_to_keys(&mnemonic, cli.network)
-        .wrap_err_with(|| format!("Failed to derive Zcash keys for network {:?}", cli.network))?;
-    mnemonic.zeroize();
+        let pass_phrase =
+            rpassword::prompt_password("Enter pass-phrase: ").map(secrecy::SecretString::from)?;
+
+        let account_idx = {
+            let input = rpassword::prompt_password("Enter account index: ")?;
+            if input.trim().is_empty() {
+                "0".to_string()
+            } else {
+                input
+            }
+        };
+
+        println!("Deriving all Zcash keys from mnemonic...\n");
+
+        mnemonic_to_keys(
+            &mnemonic,
+            cli.network,
+            &pass_phrase,
+            account_idx.parse::<u32>()?,
+        )
+        .wrap_err_with(|| format!("Failed to derive Zcash keys for network {:?}", cli.network))
+    };
+
+    let keys = keys?;
 
     println!("\n{}", "=".repeat(50));
     println!("  ZCASH KEYS (Network: {:?})", cli.network);
@@ -72,19 +90,6 @@ fn main() -> Result<()> {
             ))
     );
 
-    println!("\n{}", "=".repeat(50));
-    if cli.show_spending_keys {
-        println!("⚠️  WARNING: SPENDING KEYS CAN SPEND FUNDS!");
-        println!("\n{}", "=".repeat(50));
-
-        println!("💳 SPENDING KEYS (NEVER share these!)\n");
-        println!("Orchard Spending Key:");
-        println!("  🔑 {}\n", hex::encode(keys.usk.orchard().to_bytes()));
-        println!("Sapling Spending Key:");
-        println!("  🔑 {}\n", hex::encode(keys.usk.sapling().to_bytes()));
-    } else {
-        println!("ℹ️  Spending keys are hidden. Use --show-spending-keys to display.");
-    }
     println!("\n{}", "=".repeat(50));
 
     Ok(())
