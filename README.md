@@ -4,6 +4,12 @@
 
 A toolkit for generating non-membership proofs for Zcash shielded assets as part of the Namada airdrop. This allows Zcash users with unspent shielded notes (Sapling or Orchard) to prove they held funds at a specific snapshot height without revealing their nullifiers.
 
+## What are Non-Membership Proofs?
+
+A non-membership proof is a cryptographic proof that demonstrates a specific element (such as a nullifier) is not present in a given set, without revealing any additional information about the element itself. In the context of Zcash and this toolkit, non-membership proofs allow users to prove that their shielded note's nullifier does not appear in a snapshot of spent nullifiers. This enables users to show they held unspent funds at a particular block height, which is essential for privacy-preserving airdrops.
+
+These proofs are constructed using Merkle trees built from the set of known nullifiers at the snapshot height. By providing a non-membership proof, a user can convince a verifier that their note was not spent (i.e., its nullifier is not in the tree).
+
 ## Setup Instructions
 
 ### Without nix
