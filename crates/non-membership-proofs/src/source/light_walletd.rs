@@ -10,7 +10,7 @@ use light_wallet_api::compact_tx_streamer_client::CompactTxStreamerClient;
 use light_wallet_api::{BlockId, BlockRange, PoolType};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::{Channel, ClientTlsConfig, Uri};
 use tracing::warn;
 use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
@@ -81,13 +81,23 @@ impl LightWalletd {
     /// # Errors
     ///
     /// Returns an error if the connection to the endpoint fails.
-    pub async fn connect(endpoint: &str) -> Result<Self, LightWalletdError> {
-        let channel = Endpoint::from_shared(endpoint.to_owned())?
-            .connect_timeout(Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SECS))
-            .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS))
-            .connect()
-            .await?;
+    pub async fn connect(endpoint: Uri) -> Result<Self, LightWalletdError> {
+        // Enable TLS for HTTPS endpoints using native system roots
+        let enable_tls = endpoint.scheme() == Some(&http::uri::Scheme::HTTPS);
 
+        let mut channel = Channel::builder(endpoint)
+            .connect_timeout(Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS));
+
+        if enable_tls {
+            channel = channel.tls_config(ClientTlsConfig::new().with_webpki_roots())?;
+        } else {
+            warn!(
+                "Connecting to lightwalletd without TLS. This is not recommended for production use."
+            );
+        }
+
+        let channel = channel.connect().await?;
         let client = CompactTxStreamerClient::new(channel);
 
         Ok(Self { client })

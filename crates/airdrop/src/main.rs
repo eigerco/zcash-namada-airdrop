@@ -69,7 +69,7 @@ async fn main() -> eyre::Result<()> {
 
     let cli = Cli::parse();
 
-    match cli.command {
+    let res = match cli.command {
         Commands::BuildAirdropConfiguration {
             config,
             configuration_output_file,
@@ -104,5 +104,12 @@ async fn main() -> eyre::Result<()> {
             )
             .await
         }
+    };
+
+    if let Err(e) = res {
+        tracing::error!("Error: {:?}", e);
+        std::process::exit(1);
     }
+
+    Ok(())
 }

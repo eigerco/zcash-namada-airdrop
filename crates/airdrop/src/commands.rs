@@ -1,7 +1,9 @@
 use std::path::PathBuf;
+use std::str::FromStr as _;
 
 use eyre::{ContextCompat as _, ensure};
 use futures::StreamExt as _;
+use http::Uri;
 use non_membership_proofs::source::light_walletd::LightWalletd;
 use non_membership_proofs::user_nullifiers::{
     OrchardViewingKeys, SaplingViewingKeys, UserNullifiers as _, ViewingKeys,
@@ -29,7 +31,7 @@ pub async fn build_airdrop_configuration(
     sapling_snapshot_nullifiers: PathBuf,
     orchard_snapshot_nullifiers: PathBuf,
 ) -> eyre::Result<()> {
-    info!("Fetching nullifiers from chain");
+    info!("Fetching nullifiers");
     let stream = chain_nullifiers::get_nullifiers(&config).await?;
     let (sapling_nullifiers, orchard_nullifiers) = partition_by_pool(stream).await?;
 
@@ -128,7 +130,8 @@ pub async fn airdrop_claim(
     let (sapling_result, orchard_result) = tokio::try_join!(sapling, orchard)?;
 
     // Connect to lightwalletd
-    let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
+    let uri = Uri::from_str(lightwalletd_url)?;
+    let lightwalletd = LightWalletd::connect(uri).await?;
 
     let viewing_keys = ViewingKeys {
         sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),

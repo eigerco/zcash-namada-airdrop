@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::str::FromStr as _;
 
 use futures::{Stream, StreamExt as _};
+use http::Uri;
 use non_membership_proofs::chain_nullifiers::{ChainNullifiers as _, PoolNullifier};
 use non_membership_proofs::source::file::FileSource;
 use non_membership_proofs::source::light_walletd::LightWalletd;
@@ -17,8 +19,9 @@ type NullifierStream = Pin<Box<dyn Stream<Item = eyre::Result<PoolNullifier>> + 
 pub async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<NullifierStream> {
     match config.source.clone().try_into()? {
         Source::Lightwalletd { url } => {
-            debug!("Connecting to lightwalletd at {}", url);
-            let source = LightWalletd::connect(&url).await?;
+            let uri = Uri::from_str(&url)?;
+            debug!(?uri, "Connecting to lightwalletd");
+            let source = LightWalletd::connect(uri).await?;
             Ok(Box::pin(
                 source
                     .nullifiers_stream(&config.snapshot, vec![])
