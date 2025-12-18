@@ -1613,6 +1613,7 @@ dependencies = [
  "hex",
  "light-wallet-api",
  "orchard",
+ "rayon",
  "rs_merkle",
  "sapling-crypto",
  "thiserror 2.0.17",

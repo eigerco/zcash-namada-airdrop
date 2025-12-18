@@ -9,6 +9,8 @@ use std::path::Path;
 
 use chain_nullifiers::PoolNullifier;
 use futures::{Stream, TryStreamExt as _};
+use rayon::iter::ParallelIterator as _;
+use rayon::slice::ParallelSlice as _;
 use rs_merkle::{Hasher, MerkleTree};
 use thiserror::Error;
 use tokio::fs::File;
@@ -92,11 +94,14 @@ pub enum MerkleTreeError {
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::missing_panics_doc,
+    clippy::missing_asserts_for_indexing,
     reason = "Panics are impossible: we check is_empty() before .expect(), and windows(2) guarantees 2 elements"
 )]
-pub fn build_merkle_tree<H: Hasher>(
-    nullifiers: &[Nullifier],
-) -> Result<MerkleTree<H>, MerkleTreeError> {
+pub fn build_merkle_tree<H>(nullifiers: &[Nullifier]) -> Result<MerkleTree<H>, MerkleTreeError>
+where
+    H: Hasher,
+    H::Hash: std::marker::Send,
+{
     if nullifiers.is_empty() {
         return Ok(MerkleTree::new());
     }
@@ -120,15 +125,12 @@ pub fn build_merkle_tree<H: Hasher>(
     let mut leaves = Vec::with_capacity(nullifiers.len().saturating_add(1));
 
     leaves.push(front);
-    leaves.extend(nullifiers.windows(2).map(|w| {
-        // windows(2) guarantees w.len() == 2
-        assert_eq!(
-            w.len(),
-            2,
-            "windows(2) should always yield slices of length 2"
-        );
-        H::hash(&build_leaf(&w[0], &w[1]))
-    }));
+    leaves.extend(
+        nullifiers
+            .par_windows(2)
+            .map(|w| H::hash(&build_leaf(&w[0], &w[1])))
+            .collect::<Vec<_>>(),
+    );
     leaves.push(back);
 
     Ok(MerkleTree::from_leaves(&leaves))

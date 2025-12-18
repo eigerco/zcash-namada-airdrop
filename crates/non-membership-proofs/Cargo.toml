@@ -14,6 +14,7 @@ futures-core = { workspace = true }
 hex = { workspace = true }
 light-wallet-api = { workspace = true }
 orchard = { workspace = true }
+rayon = "1"
 rs_merkle = { workspace = true }
 sapling = { workspace = true }
 thiserror = { workspace = true }

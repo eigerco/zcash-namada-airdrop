@@ -10,6 +10,7 @@ use light_wallet_api::{BlockId, BlockRange};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::Channel;
+use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
 use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
@@ -36,6 +37,12 @@ pub enum LightWalletdError {
     /// Decryption error
     #[error("Decryption error: {0}")]
     Decrypt(#[from] DecryptError),
+    /// Integer conversion error
+    #[error("Integer conversion error: {0}")]
+    IntConversion(#[from] std::num::TryFromIntError),
+    /// Overflow error
+    #[error("Overflow error")]
+    OverflowError,
 }
 
 /// A lightwalletd client
@@ -181,7 +188,7 @@ impl UserNullifiers for LightWalletd {
                 let mut cumulative = 0_u32;
                 for tx in &block.vtx {
                     tx_sapling_start_positions.push(cumulative);
-                    cumulative = cumulative.saturating_add(u32::try_from(tx.outputs.len()).unwrap_or(u32::MAX));
+                    cumulative = cumulative.checked_add(u32::try_from(tx.outputs.len())?).ok_or(LightWalletdError::OverflowError)?;
                 }
 
                 // The tree size at the start of the block is the end size minus all outputs in this block
@@ -200,8 +207,12 @@ impl UserNullifiers for LightWalletd {
                                 .saturating_add(u64::from(tx_start))
                                 .saturating_add(u64::try_from(sapling_note.output_index).unwrap_or(u64::MAX));
 
+                            // Failed silently if txid is not valid
+                            // Txid does not affect note decryption or nullifier calculation
                             let txid = block.vtx.get(sapling_note.tx_index)
-                                .map_or_else(Vec::new, |tx| tx.txid.clone());
+                                .map_or_else(|| TxId::NULL, |tx| {
+                                    TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL)
+                                });
 
                             yield AnyFoundNote::Sapling(FoundNote::<SaplingNote> {
                                 note: SaplingNote {
@@ -216,8 +227,12 @@ impl UserNullifiers for LightWalletd {
                             });
                         }
                         DecryptedNote::Orchard(orchard_note) => {
+                            // Failed silently if txid is not valid
+                            // Txid does not affect note decryption or nullifier calculation
                             let txid = block.vtx.get(orchard_note.tx_index)
-                                .map_or_else(Vec::new, |tx| tx.txid.clone());
+                                .map_or_else(|| TxId::NULL, |tx| {
+                                    TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL)
+                                });
 
                             yield AnyFoundNote::Orchard(FoundNote::<orchard::Note> {
                                 note: orchard_note.note,

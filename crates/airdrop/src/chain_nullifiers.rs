@@ -17,6 +17,7 @@ type NullifierStream = Pin<Box<dyn Stream<Item = eyre::Result<PoolNullifier>> + 
 pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<NullifierStream> {
     match config.source.clone().try_into()? {
         Source::Lightwalletd { url } => {
+            debug!("Connecting to lightwalletd at {}", url);
             let source = LightWalletd::connect(&url).await?;
             Ok(Box::pin(
                 source
@@ -25,7 +26,11 @@ pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<Nullifie
             ))
         }
         Source::File { orchard, sapling } => {
-            let source = FileSource::new(PathBuf::from(sapling), PathBuf::from(orchard));
+            debug!(
+                "Loading nullifiers from files: sapling={:?}, orchard={:?}",
+                sapling, orchard
+            );
+            let source = FileSource::new(sapling.map(PathBuf::from), orchard.map(PathBuf::from));
             Ok(Box::pin(
                 source
                     .nullifiers_stream(&config.snapshot)

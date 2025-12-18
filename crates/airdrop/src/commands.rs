@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use eyre::{ContextCompat as _, ensure};
 use futures::StreamExt as _;
@@ -10,8 +10,9 @@ use non_membership_proofs::utils::ReverseBytes as _;
 use non_membership_proofs::{
     Nullifier, Pool, build_merkle_tree, partition_by_pool, write_raw_nullifiers,
 };
+use rs_merkle::Hasher;
 use rs_merkle::algorithms::Sha256;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 use zcash_protocol::consensus::{MainNetwork, Network, TestNetwork};
 
 use crate::chain_nullifiers::{self, load_nullifiers_from_file};
@@ -30,43 +31,71 @@ pub(crate) async fn build_airdrop_configuration(
 ) -> eyre::Result<()> {
     info!("Fetching nullifiers from chain");
     let stream = chain_nullifiers::get_nullifiers(config).await?;
-    let (mut sapling_nullifiers, mut orchard_nullifiers) = partition_by_pool(stream).await?;
+    let (sapling_nullifiers, orchard_nullifiers) = partition_by_pool(stream).await?;
 
-    info!(
-        sapling = sapling_nullifiers.len(),
-        orchard = orchard_nullifiers.len(),
-        "Collected nullifiers"
-    );
+    let sapling_handle = tokio::spawn(process_pool::<Sha256>(
+        "sapling",
+        sapling_nullifiers,
+        sapling_snapshot_nullifiers.as_ref().to_path_buf(),
+    ));
+    let orchard_handle = tokio::spawn(process_pool::<Sha256>(
+        "orchard",
+        orchard_nullifiers,
+        orchard_snapshot_nullifiers.as_ref().to_path_buf(),
+    ));
 
-    sapling_nullifiers.sort_unstable();
-    orchard_nullifiers.sort_unstable();
-
-    ensure!(
-        is_sanitize(&sapling_nullifiers) && is_sanitize(&orchard_nullifiers),
-        "Nullifier lists contain duplicates"
-    );
-
-    write_raw_nullifiers(&sapling_nullifiers, &sapling_snapshot_nullifiers).await?;
-    info!(file = %sapling_snapshot_nullifiers.as_ref().display(), pool = "sapling", "Saved nullifiers");
-
-    write_raw_nullifiers(&orchard_nullifiers, &orchard_snapshot_nullifiers).await?;
-    info!(file = %orchard_snapshot_nullifiers.as_ref().display(), pool = "orchard", "Saved nullifiers");
-
-    let sapling_tree = build_merkle_tree::<Sha256>(&sapling_nullifiers)?;
-    info!(pool = "sapling", root = %sapling_tree.root_hex().unwrap_or_default(), "Built merkle tree");
-
-    let orchard_tree = build_merkle_tree::<Sha256>(&orchard_nullifiers)?;
-    info!(pool = "orchard", root = %orchard_tree.root_hex().unwrap_or_default(), "Built merkle tree");
+    let (sapling_root, orchard_root) = tokio::try_join!(sapling_handle, orchard_handle)?;
+    let sapling_root = sapling_root?;
+    let orchard_root = orchard_root?;
 
     airdrop_configuration::AirdropConfiguration::new(
-        sapling_tree.root_hex().as_deref(),
-        orchard_tree.root_hex().as_deref(),
+        sapling_root.as_deref(),
+        orchard_root.as_deref(),
     )
     .export_config(&configuration_output_file)
     .await?;
 
     info!(file = %configuration_output_file.as_ref().display(), "Exported configuration");
     Ok(())
+}
+
+async fn process_pool<H>(
+    pool: &str,
+    mut nullifiers: Vec<Nullifier>,
+    store: PathBuf,
+) -> eyre::Result<Option<String>>
+where
+    H: Hasher + 'static,
+    H::Hash: std::marker::Send,
+{
+    if nullifiers.is_empty() {
+        warn!(pool, "No nullifiers collected");
+        return Ok(None);
+    }
+
+    info!(pool, count = nullifiers.len(), "Collected nullifiers");
+
+    nullifiers.sort_unstable();
+
+    ensure!(
+        is_sanitize(&nullifiers),
+        "Nullifier lists contain duplicates"
+    );
+
+    write_raw_nullifiers(&nullifiers, &store).await?;
+    info!(file = ?store, pool, "Saved nullifiers");
+
+    let merkle_tree = tokio::task::spawn_blocking(move || {
+        non_membership_proofs::build_merkle_tree::<H>(&nullifiers)
+    })
+    .await??;
+    info!(pool, root = ?merkle_tree.root_hex(), "Built merkle tree");
+
+    Ok(Some(
+        merkle_tree
+            .root_hex()
+            .context("Failed to get merkle root")?,
+    ))
 }
 
 #[instrument(skip_all, fields(
@@ -113,10 +142,10 @@ pub(crate) async fn airdrop_claim(
     );
 
     let sapling_tree = build_merkle_tree::<Sha256>(&sapling_nullifiers)?;
-    info!(pool = "sapling", root = %sapling_tree.root_hex().unwrap_or_default(), "Built merkle tree");
+    info!(pool = "sapling", root = ?sapling_tree.root_hex(), "Built merkle tree");
 
     let orchard_tree = build_merkle_tree::<Sha256>(&orchard_nullifiers)?;
-    info!(pool = "orchard", root = %orchard_tree.root_hex().unwrap_or_default(), "Built merkle tree");
+    info!(pool = "orchard", root = ?orchard_tree.root_hex(), "Built merkle tree");
 
     // Connect to lightwalletd
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;

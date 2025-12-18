@@ -116,35 +116,43 @@ pub(crate) struct SourceArgs {
     #[arg(long, env = "LIGHTWALLETD_URL")]
     pub lightwalletd_url: Option<String>,
 
-    /// Input files in format: `sapling_path,orchard_path`
-    #[arg(long, env = "INPUT_FILES")]
+    /// Input files in format
+    #[command(flatten)]
     pub input_files: Option<FileSourceArgs>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, clap::Args)]
 pub(crate) struct FileSourceArgs {
-    pub sapling: String,
-    pub orchard: String,
+    #[arg(long, env = "SAPLING_FILE")]
+    pub sapling: Option<String>,
+    #[arg(long, env = "ORCHARD_FILE")]
+    pub orchard: Option<String>,
 }
 
-impl std::str::FromStr for FileSourceArgs {
-    type Err = eyre::Report;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (sapling, orchard) = s
-            .split_once(',')
-            .ok_or_else(|| eyre!("Expected format: sapling_path,orchard_path"))?;
-        Ok(Self {
-            sapling: sapling.to_owned(),
-            orchard: orchard.to_owned(),
-        })
-    }
-}
+// impl std::str::FromStr for FileSourceArgs {
+//     type Err = eyre::Report;
+//
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         let (sapling, orchard) = s
+//             .split_once(',')
+//             .ok_or_else(|| eyre!("Expected format: sapling_path,orchard_path"))?;
+//
+//         Ok(Self {
+//             sapling: sapling.to_owned(),
+//             orchard: orchard.to_owned(),
+//         })
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub(crate) enum Source {
-    Lightwalletd { url: String },
-    File { orchard: String, sapling: String },
+    Lightwalletd {
+        url: String,
+    },
+    File {
+        orchard: Option<String>,
+        sapling: Option<String>,
+    },
 }
 
 impl TryFrom<SourceArgs> for Source {

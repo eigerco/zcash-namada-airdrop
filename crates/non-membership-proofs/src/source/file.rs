@@ -27,8 +27,8 @@ use crate::chain_nullifiers::{ChainNullifiers, PoolNullifier};
     reason = "Clearer name for source type"
 )]
 pub struct FileSource {
-    sapling_path: PathBuf,
-    orchard_path: PathBuf,
+    sapling_path: Option<PathBuf>,
+    orchard_path: Option<PathBuf>,
 }
 
 impl FileSource {
@@ -38,7 +38,7 @@ impl FileSource {
     /// * `sapling_path` - Path to the Sapling nullifiers binary file
     /// * `orchard_path` - Path to the Orchard nullifiers binary file
     #[must_use]
-    pub const fn new(sapling_path: PathBuf, orchard_path: PathBuf) -> Self {
+    pub const fn new(sapling_path: Option<PathBuf>, orchard_path: Option<PathBuf>) -> Self {
         Self {
             sapling_path,
             orchard_path,
@@ -50,6 +50,8 @@ impl ChainNullifiers for FileSource {
     type Error = io::Error;
     type Stream = Pin<Box<dyn Stream<Item = Result<PoolNullifier, Self::Error>> + Send>>;
 
+    /// Read nullifiers from the specified files
+    /// range is ignored since files contain all nullifiers
     fn nullifiers_stream(&self, _range: &RangeInclusive<u64>) -> Self::Stream {
         let sapling_path = self.sapling_path.clone();
         let orchard_path = self.orchard_path.clone();
@@ -57,12 +59,15 @@ impl ChainNullifiers for FileSource {
         Box::pin(try_stream! {
             const NULLIFIER_SIZE: usize = 32;
             const BUF_NULLIFIERS: usize = 1024;
-            let mut buf = vec![0_u8; NULLIFIER_SIZE.saturating_mul(BUF_NULLIFIERS)];
+            let mut buf = vec![0_u8; NULLIFIER_SIZE * BUF_NULLIFIERS];
 
             for (file, pool) in [
                 (sapling_path, Pool::Sapling),
                 (orchard_path, Pool::Orchard),
             ] {
+                let Some(file) = file else {
+                    continue;
+                };
                 let file = File::open(file).await?;
                 let mut reader = BufReader::new(file);
                 let mut leftover = 0_usize; // bytes carried over from previous read
@@ -87,8 +92,8 @@ impl ChainNullifiers for FileSource {
                     }
 
                     let total = leftover.saturating_add(n);
-                    // Integer division is intentional here - we want floor division
-                    let complete_count = total.checked_div(NULLIFIER_SIZE).unwrap_or(0);
+                    #[allow(clippy::integer_division, reason = "Integer division is intentional here - we want floor division")]
+                    let complete_count = total / NULLIFIER_SIZE;
                     let complete_bytes = complete_count.saturating_mul(NULLIFIER_SIZE);
 
                     // Process complete nullifiers

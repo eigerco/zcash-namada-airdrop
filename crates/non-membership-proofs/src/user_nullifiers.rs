@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use futures_core::Stream;
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
+use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
 use crate::Pool;
@@ -22,7 +23,7 @@ pub struct NoteMetadata {
     /// Block height where the note was found
     pub height: u64,
     /// Transaction ID containing the note
-    pub txid: Vec<u8>,
+    pub txid: TxId,
     /// The scope (External for received payments, Internal for change)
     pub scope: Scope,
 }
