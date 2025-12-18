@@ -50,8 +50,6 @@ pub struct DecryptedOrchardNote {
     pub scope: Scope,
 }
 
-// TODO: check the documentation comments below
-
 /// Viewing keys for decryption and nullifier derivation
 ///
 /// Provide both external (for receiving) and internal (for change) keys
