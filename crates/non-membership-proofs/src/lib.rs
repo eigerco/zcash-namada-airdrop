@@ -72,6 +72,9 @@ pub enum MerkleTreeError {
 
 /// Builds a Merkle tree from a sorted slice of nullifiers for non-membership proofs.
 ///
+/// Note: This function may be CPU-intensive for large slices. If used in an async context, consider
+/// offloading to a blocking thread.
+///
 /// # Arguments
 ///
 /// * `nullifiers` - A slice of nullifiers, which must be sorted in ascending order.

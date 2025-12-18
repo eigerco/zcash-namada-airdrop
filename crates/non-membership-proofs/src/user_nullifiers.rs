@@ -9,7 +9,7 @@ use sapling::zip32::DiversifiableFullViewingKey;
 use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
-use crate::Pool;
+use crate::{Nullifier, Pool};
 
 pub(crate) mod decrypt_notes;
 
@@ -180,7 +180,7 @@ impl AnyFoundNote {
 
     /// Derive the nullifier for this note
     #[must_use]
-    pub fn nullifier(&self, keys: &ViewingKeys) -> Option<[u8; 32]> {
+    pub fn nullifier(&self, keys: &ViewingKeys) -> Option<Nullifier> {
         match self {
             Self::Sapling(n) => keys.sapling.as_ref().map(|key| n.nullifier(key)),
             Self::Orchard(n) => keys.orchard.as_ref().map(|key| n.nullifier(key)),

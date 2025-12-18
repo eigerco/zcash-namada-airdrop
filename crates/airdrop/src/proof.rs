@@ -50,7 +50,9 @@ enum MerkleProofError {
 }
 
 /// Search for a nullifier in the snapshot and generate a non-membership proof if not found.
-/// Returns `Some(proof)` if the note is unspent, `None` if the note was already spent.
+/// Returns:
+/// - `Some(proof)` if the note is unspent
+/// - `None` if the note was already spent.
 #[instrument(
     skip(snapshot_nullifiers, merkle_tree, keys, note),
     fields(pool = ?note.pool(), height = note.height())
@@ -61,9 +63,10 @@ pub(crate) fn generate_non_membership_proof<H: Hasher>(
     merkle_tree: &MerkleTree<H>,
     keys: &ViewingKeys,
 ) -> eyre::Result<Option<NullifierProof>> {
-    let nullifier = note
-        .nullifier(keys)
-        .context("Failed to get nullifier from note")?;
+    let Some(nullifier) = note.nullifier(keys) else {
+        warn!(?note, "Could not derive nullifier for note");
+        return Ok(None);
+    };
 
     generate_non_membership_proof_for_nullifier(nullifier, snapshot_nullifiers, merkle_tree)
 }
@@ -110,8 +113,6 @@ pub(crate) fn generate_non_membership_proof<H: Hasher>(
 ///    - Above all nullifiers → bounds are `[last_nullifier, MAX]`
 ///    - Between two nullifiers → bounds are `[nullifier[i-1], nullifier[i]]`
 /// 4. Build the leaf from bounds and generate a Merkle proof
-///
-/// [`build_merkle_tree`]: non_membership_proofs::build_merkle_tree
 #[allow(
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,

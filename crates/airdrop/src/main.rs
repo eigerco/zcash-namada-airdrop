@@ -69,7 +69,7 @@ async fn main() -> eyre::Result<()> {
 
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::BuildAirdropConfiguration {
             config,
             configuration_output_file,
@@ -97,9 +97,9 @@ async fn main() -> eyre::Result<()> {
                 config,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                orchard_fvk,
-                sapling_fvk,
-                *birthday_height,
+                &orchard_fvk,
+                &sapling_fvk,
+                birthday_height,
                 airdrop_claims_output_file,
             )
             .await

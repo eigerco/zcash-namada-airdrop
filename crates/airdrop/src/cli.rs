@@ -64,7 +64,7 @@ pub(crate) enum Commands {
             env = "SAPLING_SNAPSHOT_NULLIFIERS",
             default_value = "sapling-snapshot-nullifiers.bin"
         )]
-        sapling_snapshot_nullifiers: PathBuf,
+        sapling_snapshot_nullifiers: Option<PathBuf>,
         /// Orchard snapshot nullifiers. This file contains the orchard nullifiers of the snapshot.
         /// It's used to recreate the Merkle tree of the snapshot for orchard notes.
         #[arg(
@@ -72,7 +72,7 @@ pub(crate) enum Commands {
             env = "ORCHARD_SNAPSHOT_NULLIFIERS",
             default_value = "orchard-snapshot-nullifiers.bin"
         )]
-        orchard_snapshot_nullifiers: PathBuf,
+        orchard_snapshot_nullifiers: Option<PathBuf>,
 
         /// Orchard Full Viewing Key (hex-encoded, 96 bytes)
         #[arg(short = 'o', long, env = "ORCHARD_FVK", value_parser = parse_orchard_fvk)]

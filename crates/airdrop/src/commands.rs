@@ -10,8 +10,8 @@ use non_membership_proofs::utils::ReverseBytes as _;
 use non_membership_proofs::{
     Nullifier, Pool, build_merkle_tree, partition_by_pool, write_raw_nullifiers,
 };
-use rs_merkle::Hasher;
 use rs_merkle::algorithms::Sha256;
+use rs_merkle::{Hasher, MerkleTree};
 use tracing::{debug, info, instrument, warn};
 use zcash_protocol::consensus::{MainNetwork, Network, TestNetwork};
 
@@ -24,13 +24,13 @@ use crate::{airdrop_configuration, is_sanitize};
     snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end())
 ))]
 pub(crate) async fn build_airdrop_configuration(
-    config: &CommonArgs,
+    config: CommonArgs,
     configuration_output_file: impl AsRef<Path>,
     sapling_snapshot_nullifiers: impl AsRef<Path>,
     orchard_snapshot_nullifiers: impl AsRef<Path>,
 ) -> eyre::Result<()> {
     info!("Fetching nullifiers from chain");
-    let stream = chain_nullifiers::get_nullifiers(config).await?;
+    let stream = chain_nullifiers::get_nullifiers(&config).await?;
     let (sapling_nullifiers, orchard_nullifiers) = partition_by_pool(stream).await?;
 
     let sapling_handle = tokio::spawn(process_pool::<Sha256>(
@@ -85,10 +85,8 @@ where
     write_raw_nullifiers(&nullifiers, &store).await?;
     info!(file = ?store, pool, "Saved nullifiers");
 
-    let merkle_tree = tokio::task::spawn_blocking(move || {
-        non_membership_proofs::build_merkle_tree::<H>(&nullifiers)
-    })
-    .await??;
+    let merkle_tree =
+        tokio::task::spawn_blocking(move || build_merkle_tree::<H>(&nullifiers)).await??;
     info!(pool, root = ?merkle_tree.root_hex(), "Built merkle tree");
 
     Ok(Some(
@@ -106,9 +104,9 @@ where
     reason = "Complex but coherent airdrop claim logic"
 )]
 pub(crate) async fn airdrop_claim(
-    config: &CommonArgs,
-    sapling_snapshot_nullifiers: impl AsRef<Path>,
-    orchard_snapshot_nullifiers: impl AsRef<Path>,
+    config: CommonArgs,
+    sapling_snapshot_nullifiers: Option<impl AsRef<Path>>,
+    orchard_snapshot_nullifiers: Option<impl AsRef<Path>>,
     orchard_fvk: &orchard::keys::FullViewingKey,
     sapling_fvk: &sapling::zip32::DiversifiableFullViewingKey,
     birthday_height: u64,
@@ -125,27 +123,9 @@ pub(crate) async fn airdrop_claim(
         .as_ref()
         .context("lightwalletd URL is required")?;
 
-    // Load snapshot
-    info!("Loading snapshot nullifiers");
-    let sapling_nullifiers = load_nullifiers_from_file(&sapling_snapshot_nullifiers).await?;
-    let orchard_nullifiers = load_nullifiers_from_file(&orchard_snapshot_nullifiers).await?;
-
-    ensure!(
-        is_sanitize(&sapling_nullifiers) && is_sanitize(&orchard_nullifiers),
-        "Nullifier lists contain duplicates"
-    );
-
-    info!(
-        sapling = sapling_nullifiers.len(),
-        orchard = orchard_nullifiers.len(),
-        "Loaded nullifiers"
-    );
-
-    let sapling_tree = build_merkle_tree::<Sha256>(&sapling_nullifiers)?;
-    info!(pool = "sapling", root = ?sapling_tree.root_hex(), "Built merkle tree");
-
-    let orchard_tree = build_merkle_tree::<Sha256>(&orchard_nullifiers)?;
-    info!(pool = "orchard", root = ?orchard_tree.root_hex(), "Built merkle tree");
+    let sapling = airdrop_claim_merkle_tree("sapling", sapling_snapshot_nullifiers);
+    let orchard = airdrop_claim_merkle_tree("orchard", orchard_snapshot_nullifiers);
+    let (sapling_result, orchard_result) = tokio::try_join!(sapling, orchard)?;
 
     // Connect to lightwalletd
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
@@ -231,32 +211,47 @@ pub(crate) async fn airdrop_claim(
         "Generating non-membership proofs"
     );
 
-    let mut proofs = Vec::new();
+    let proofs = found_notes
+        .iter()
+        .filter_map(|note| {
+            let (nullifiers, tree) = match note.pool() {
+                Pool::Sapling => {
+                    let (nullifiers, tree) = sapling_result.as_ref().or_else(|| {
+                        warn!("Skipping Sapling note: no snapshot nullifiers available");
+                        None
+                    })?;
+                    (nullifiers, tree)
+                }
+                Pool::Orchard => {
+                    let (nullifiers, tree) = orchard_result.as_ref().or_else(|| {
+                        warn!("Skipping Orchard note: no snapshot nullifiers available");
+                        None
+                    })?;
+                    (nullifiers, tree)
+                }
+            };
 
-    for note in &found_notes {
-        if note.nullifier(&viewing_keys).is_none() {
-            continue;
-        }
+            generate_non_membership_proof::<Sha256>(note, nullifiers, tree, &viewing_keys)
+                .transpose()
+            // match generate_non_membership_proof::<Sha256>(note, nullifiers, tree, &viewing_keys)
+            // {     Ok(Some(proof)) => Some(Ok(proof)),
+            //     Ok(None) => None,
+            //     Err(e) => Some(Err(e)),
+            // }
+        })
+        .collect::<Vec<_>>();
 
-        let proof = match note.pool() {
-            Pool::Sapling => generate_non_membership_proof(
-                note,
-                &sapling_nullifiers,
-                &sapling_tree,
-                &viewing_keys,
-            )?,
-            Pool::Orchard => generate_non_membership_proof(
-                note,
-                &orchard_nullifiers,
-                &orchard_tree,
-                &viewing_keys,
-            )?,
-        };
-
-        if let Some(proof) = proof {
-            proofs.push(proof);
-        }
-    }
+    // Report errors
+    let proofs = proofs
+        .iter()
+        .filter_map(|res| match res {
+            Ok(proof) => Some(proof),
+            Err(e) => {
+                warn!("Failed to generate merkle-proof for note: {e:?}");
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
     let json = serde_json::to_string_pretty(&proofs)?;
     tokio::fs::write(&airdrop_claims_output_file, json).await?;
@@ -268,4 +263,35 @@ pub(crate) async fn airdrop_claim(
     );
 
     Ok(())
+}
+
+async fn airdrop_claim_merkle_tree<H>(
+    pool: &str,
+    snapshot_nullifiers: Option<impl AsRef<Path>>,
+) -> eyre::Result<Option<(Vec<Nullifier>, MerkleTree<H>)>>
+where
+    H: Hasher + 'static,
+    H::Hash: std::marker::Send,
+{
+    let Some(snapshot_nullifiers) = snapshot_nullifiers else {
+        warn!(pool, "No snapshot nullifiers provided");
+        return Ok(None);
+    };
+
+    let nullifiers = load_nullifiers_from_file(&snapshot_nullifiers).await?;
+
+    ensure!(
+        is_sanitize(&nullifiers),
+        "Nullifier lists contain duplicates"
+    );
+
+    info!(pool, count = nullifiers.len(), "Loaded nullifiers");
+
+    let (nullifiers, merkle_tree) = tokio::task::spawn_blocking(move || {
+        let tree = build_merkle_tree::<H>(&nullifiers)?;
+        Ok::<_, non_membership_proofs::MerkleTreeError>((nullifiers, tree))
+    })
+    .await??;
+
+    Ok(Some((nullifiers, merkle_tree)))
 }
