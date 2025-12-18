@@ -30,13 +30,13 @@ pub enum DecryptError {
 
 /// A decrypted note from either the Sapling or Orchard pool
 #[derive(Debug, Clone)]
-pub(crate) enum DecryptedNote {
+pub enum DecryptedNote {
     Sapling(DecryptedSaplingNote),
     Orchard(DecryptedOrchardNote),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DecryptedSaplingNote {
+pub struct DecryptedSaplingNote {
     pub tx_index: usize,
     pub output_index: usize,
     pub note: sapling::Note,
@@ -44,7 +44,7 @@ pub(crate) struct DecryptedSaplingNote {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DecryptedOrchardNote {
+pub struct DecryptedOrchardNote {
     pub tx_index: usize,
     pub note: OrchardNote,
     pub scope: Scope,
@@ -104,7 +104,7 @@ pub struct ViewingKeys {
 /// # Errors
 ///
 /// Returns an error if the block height exceeds `u32::MAX`.
-pub(crate) fn decrypt_compact_block<P: Parameters>(
+pub fn decrypt_compact_block<P: Parameters>(
     params: &P,
     block: &CompactBlock,
     keys: &ViewingKeys,

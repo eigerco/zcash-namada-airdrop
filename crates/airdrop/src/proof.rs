@@ -10,7 +10,7 @@ use tracing::{debug, info, instrument, warn};
 
 #[serde_as]
 #[derive(Serialize)]
-pub(crate) struct NullifierProof {
+pub struct NullifierProof {
     #[serde_as(as = "Hex")]
     left_nullifier: Nullifier,
     #[serde_as(as = "Hex")]
@@ -57,7 +57,7 @@ enum MerkleProofError {
     skip(snapshot_nullifiers, merkle_tree, keys, note),
     fields(pool = ?note.pool(), height = note.height())
 )]
-pub(crate) fn generate_non_membership_proof<H: Hasher>(
+pub fn generate_non_membership_proof<H: Hasher>(
     note: &AnyFoundNote,
     snapshot_nullifiers: &[Nullifier],
     merkle_tree: &MerkleTree<H>,
@@ -104,7 +104,7 @@ pub(crate) fn generate_non_membership_proof<H: Hasher>(
 ///
 /// # Algorithm
 ///
-/// Uses virtual boundaries `[0u8; 32]` (MIN) and `[0xFFu8; 32]` (MAX) to handle edge cases:
+/// Uses virtual boundaries `[0_u8; 32]` (MIN) and `[0xFF_u8; 32]` (MAX) to handle edge cases:
 ///
 /// 1. Binary search to find where `nullifier` would be inserted in `snapshot_nullifiers`
 /// 2. If found, return `None` (spent)
@@ -114,8 +114,8 @@ pub(crate) fn generate_non_membership_proof<H: Hasher>(
 ///    - Between two nullifiers → bounds are `[nullifier[i-1], nullifier[i]]`
 /// 4. Build the leaf from bounds and generate a Merkle proof
 #[allow(
-    clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
     reason = "We ensure bounds before indexing"
 )]
 fn generate_non_membership_proof_for_nullifier<H: Hasher>(
@@ -215,18 +215,19 @@ fn generate_non_membership_proof_for_nullifier<H: Hasher>(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, reason = "Tests")]
     use non_membership_proofs::build_merkle_tree;
     use rs_merkle::algorithms::Sha256;
 
     use super::*;
 
-    const MIN_NF: Nullifier = [0u8; 32];
-    const MAX_NF: Nullifier = [0xFFu8; 32];
+    const MIN_NF: Nullifier = [0_u8; 32];
+    const MAX_NF: Nullifier = [0xFF_u8; 32];
 
     /// Helper macro to create a nullifier with a specific last byte.
     macro_rules! nf {
         ($v:expr) => {{
-            let mut arr = [0u8; 32];
+            let mut arr = [0_u8; 32];
             arr[31] = $v;
             arr
         }};
@@ -362,7 +363,7 @@ mod tests {
     fn merkle_proof_is_verifiable() {
         let nullifiers = nfs![10, 30, 50, 70];
         let test_nullifiers = nfs![5, 20, 40, 60, 80];
-        let expected_bounds = vec![
+        let expected_bounds = [
             (MIN_NF, nf!(10)),  // for 5
             (nf!(10), nf!(30)), // for 20
             (nf!(30), nf!(50)), // for 40

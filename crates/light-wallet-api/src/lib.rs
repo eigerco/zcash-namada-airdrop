@@ -5,6 +5,7 @@ mod rpc {
         clippy::nursery,
         clippy::restriction,
         missing_docs,
+        unused_qualifications,
         reason = "Relax lints for generated code"
     )]
 

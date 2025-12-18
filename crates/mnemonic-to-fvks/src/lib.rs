@@ -10,6 +10,10 @@ use zip32::AccountId;
 /// Complete set of Zcash keys derived from a mnemonic
 ///
 /// Contains both Full Viewing Keys (for finding notes) and Spending Keys (for deriving nullifiers).
+#[allow(
+    missing_debug_implementations,
+    reason = "Contains sensitive key material."
+)]
 pub struct ZcashKeys {
     /// Unified Full Viewing Key (for finding notes)
     pub ufvk: UnifiedFullViewingKey,

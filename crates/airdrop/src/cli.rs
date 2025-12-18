@@ -12,7 +12,7 @@ use zcash_protocol::consensus::Network;
 #[derive(Debug, Parser)]
 #[command(name = "airdrop")]
 #[command(about = "Zcash airdrop tool for building snapshots and finding notes")]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -22,7 +22,7 @@ pub(crate) struct Cli {
     clippy::large_enum_variant,
     reason = "CLI commands are only parsed once"
 )]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Build a snapshot of nullifiers from a source
     BuildAirdropConfiguration {
         #[command(flatten)]
@@ -97,7 +97,7 @@ pub(crate) enum Commands {
 }
 
 #[derive(Debug, clap::Args)]
-pub(crate) struct CommonArgs {
+pub struct CommonArgs {
     /// Network to use (mainnet or testnet)
     #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
     pub network: Network,
@@ -111,7 +111,7 @@ pub(crate) struct CommonArgs {
 }
 
 #[derive(Debug, Clone, clap::Args)]
-pub(crate) struct SourceArgs {
+pub struct SourceArgs {
     /// Lightwalletd gRPC endpoint URL
     #[arg(long, env = "LIGHTWALLETD_URL")]
     pub lightwalletd_url: Option<String>,
@@ -122,7 +122,7 @@ pub(crate) struct SourceArgs {
 }
 
 #[derive(Debug, Clone, clap::Args)]
-pub(crate) struct FileSourceArgs {
+pub struct FileSourceArgs {
     #[arg(long, env = "SAPLING_FILE")]
     pub sapling: Option<String>,
     #[arg(long, env = "ORCHARD_FILE")]
@@ -130,7 +130,7 @@ pub(crate) struct FileSourceArgs {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Source {
+pub enum Source {
     Lightwalletd {
         url: String,
     },

@@ -103,7 +103,7 @@ pub enum MerkleTreeError {
 pub fn build_merkle_tree<H>(nullifiers: &[Nullifier]) -> Result<MerkleTree<H>, MerkleTreeError>
 where
     H: Hasher,
-    H::Hash: std::marker::Send,
+    H::Hash: Send,
 {
     if nullifiers.is_empty() {
         return Ok(MerkleTree::new());

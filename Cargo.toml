@@ -47,61 +47,18 @@ zcash_primitives = "0.26.3"
 zcash_protocol = "0.7.2"
 zip32 = "0.2.1"
 
-[workspace.lints.clippy]
-absolute_paths = "allow"
-allow_attributes = "allow"
-arbitrary_source_item_ordering.level = "allow"
-non_ascii_literal = "allow"
-blanket_clippy_restriction_lints = "allow"
-cargo = { priority = -1, level = "deny" }
-cargo_common_metadata = "allow"
-complexity = { priority = -2, level = "deny" }
-correctness = { priority = -4, level = "deny" }
-dbg_macro = "allow"
-exhaustive_enums = "allow"
-exhaustive_structs = "allow"
-expect_used = "allow"
-future_not_send = "allow"
-implicit_return = "allow"
-integer_division_remainder_used = "allow"
-min_ident_chars = "allow"
-missing_docs_in_private_items = "allow"
-missing_inline_in_public_items = "allow"
-missing_trait_methods = "allow"
-mod_module_files = "allow"
-multiple_crate_versions = "allow"
-negative_feature_names = "allow"
-nursery = { priority = -9, level = "deny" }
-option_if_let_else = "allow"
-pattern_type_mismatch = "allow"
-pedantic = { priority = -8, level = "deny" }
-perf = { priority = -3, level = "deny" }
-pub_use = "allow"
-pub_with_shorthand = "allow"
-question_mark_used = "allow"
-redundant_pub_crate = "allow"
-ref_patterns = "allow"
-restriction = { priority = -5, level = "deny" }
-self_named_module_files = "allow"
-separated_literal_suffix = "allow"
-shadow_reuse = "allow"
-shadow_unrelated = "allow"
-single_call_fn = "allow"
-single_char_lifetime_names = "allow"
-std_instead_of_alloc = "allow"
-std_instead_of_core = "allow"
-style = { priority = -6, level = "deny" }
-suspicious = { priority = -7, level = "deny" }
-use_debug = "allow"
-wildcard_imports = "allow"
-
 [patch.crates-io]
 orchard = { path = "./.patched-orchard" }
 sapling-crypto = { path = "./.patched-sapling-crypto" }
 
 [workspace.lints.rust]
 missing_docs = { level = "warn", priority = -1 }
-rust_2018_idioms = { level = "deny", priority = 0 }
-unreachable_pub = { level = "warn", priority = -1 }
+unsafe_code = "warn"
 unused_imports = { level = "warn", priority = -1 }
-unused_must_use = { level = "deny", priority = -1 }
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+arithmetic_side_effects = "deny"
+indexing_slicing = "deny"
+unwrap_used = "deny"

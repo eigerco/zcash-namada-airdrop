@@ -3,13 +3,13 @@ use std::path::Path;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
-pub(crate) struct AirdropConfiguration<'a> {
+pub struct AirdropConfiguration<'a> {
     sapling_merkle_root: Option<&'a str>,
     orchard_merkle_root: Option<&'a str>,
 }
 
 impl<'a> AirdropConfiguration<'a> {
-    pub(crate) const fn new(
+    pub const fn new(
         sapling_merkle_root: Option<&'a str>,
         orchard_merkle_root: Option<&'a str>,
     ) -> Self {
@@ -19,7 +19,7 @@ impl<'a> AirdropConfiguration<'a> {
         }
     }
 
-    pub(crate) async fn export_config(&self, destination: impl AsRef<Path>) -> eyre::Result<()> {
+    pub async fn export_config(&self, destination: impl AsRef<Path>) -> eyre::Result<()> {
         let config_json = serde_json::to_string_pretty(self)?;
         tokio::fs::write(destination, config_json).await?;
         Ok(())

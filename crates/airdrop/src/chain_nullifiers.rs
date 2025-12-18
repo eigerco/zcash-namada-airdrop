@@ -14,7 +14,7 @@ use crate::cli::Source;
 type NullifierStream = Pin<Box<dyn Stream<Item = eyre::Result<PoolNullifier>> + Send>>;
 
 /// Get a stream of nullifiers based on the configuration
-pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<NullifierStream> {
+pub async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<NullifierStream> {
     match config.source.clone().try_into()? {
         Source::Lightwalletd { url } => {
             debug!("Connecting to lightwalletd at {}", url);
@@ -42,9 +42,7 @@ pub(crate) async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<Nullifie
 
 /// Load nullifiers from a file
 #[instrument(fields(path = ?path.as_ref()))]
-pub(crate) async fn load_nullifiers_from_file(
-    path: impl AsRef<Path>,
-) -> eyre::Result<Vec<[u8; 32]>> {
+pub async fn load_nullifiers_from_file(path: impl AsRef<Path>) -> eyre::Result<Vec<[u8; 32]>> {
     debug!("Loading nullifiers from file");
 
     let mut nullifiers = non_membership_proofs::read_raw_nullifiers(path).await?;

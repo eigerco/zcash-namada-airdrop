@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use eyre::{ContextCompat as _, ensure};
 use futures::StreamExt as _;
@@ -23,11 +23,11 @@ use crate::{airdrop_configuration, is_sanitize};
 #[instrument(skip_all, fields(
     snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end())
 ))]
-pub(crate) async fn build_airdrop_configuration(
+pub async fn build_airdrop_configuration(
     config: CommonArgs,
-    configuration_output_file: impl AsRef<Path>,
-    sapling_snapshot_nullifiers: impl AsRef<Path>,
-    orchard_snapshot_nullifiers: impl AsRef<Path>,
+    configuration_output_file: PathBuf,
+    sapling_snapshot_nullifiers: PathBuf,
+    orchard_snapshot_nullifiers: PathBuf,
 ) -> eyre::Result<()> {
     info!("Fetching nullifiers from chain");
     let stream = chain_nullifiers::get_nullifiers(&config).await?;
@@ -36,12 +36,12 @@ pub(crate) async fn build_airdrop_configuration(
     let sapling_handle = tokio::spawn(process_pool::<Sha256>(
         "sapling",
         sapling_nullifiers,
-        sapling_snapshot_nullifiers.as_ref().to_path_buf(),
+        sapling_snapshot_nullifiers,
     ));
     let orchard_handle = tokio::spawn(process_pool::<Sha256>(
         "orchard",
         orchard_nullifiers,
-        orchard_snapshot_nullifiers.as_ref().to_path_buf(),
+        orchard_snapshot_nullifiers,
     ));
 
     let (sapling_root, orchard_root) = tokio::try_join!(sapling_handle, orchard_handle)?;
@@ -55,7 +55,7 @@ pub(crate) async fn build_airdrop_configuration(
     .export_config(&configuration_output_file)
     .await?;
 
-    info!(file = %configuration_output_file.as_ref().display(), "Exported configuration");
+    info!(file = ?configuration_output_file, "Exported configuration");
     Ok(())
 }
 
@@ -66,7 +66,7 @@ async fn process_pool<H>(
 ) -> eyre::Result<Option<String>>
 where
     H: Hasher + 'static,
-    H::Hash: std::marker::Send,
+    H::Hash: Send,
 {
     if nullifiers.is_empty() {
         warn!(pool, "No nullifiers collected");
@@ -103,14 +103,14 @@ where
     clippy::too_many_lines,
     reason = "Complex but coherent airdrop claim logic"
 )]
-pub(crate) async fn airdrop_claim(
+pub async fn airdrop_claim(
     config: CommonArgs,
-    sapling_snapshot_nullifiers: Option<impl AsRef<Path>>,
-    orchard_snapshot_nullifiers: Option<impl AsRef<Path>>,
+    sapling_snapshot_nullifiers: Option<PathBuf>,
+    orchard_snapshot_nullifiers: Option<PathBuf>,
     orchard_fvk: &orchard::keys::FullViewingKey,
     sapling_fvk: &sapling::zip32::DiversifiableFullViewingKey,
     birthday_height: u64,
-    airdrop_claims_output_file: impl AsRef<Path>,
+    airdrop_claims_output_file: PathBuf,
 ) -> eyre::Result<()> {
     ensure!(
         birthday_height <= *config.snapshot.end(),
@@ -252,7 +252,7 @@ pub(crate) async fn airdrop_claim(
     tokio::fs::write(&airdrop_claims_output_file, json).await?;
 
     info!(
-        file = %airdrop_claims_output_file.as_ref().display(),
+        file = ?airdrop_claims_output_file,
         count = proofs.len(),
         "Proofs written"
     );
@@ -262,11 +262,11 @@ pub(crate) async fn airdrop_claim(
 
 async fn airdrop_claim_merkle_tree<H>(
     pool: &str,
-    snapshot_nullifiers: Option<impl AsRef<Path>>,
+    snapshot_nullifiers: Option<PathBuf>,
 ) -> eyre::Result<Option<(Vec<Nullifier>, MerkleTree<H>)>>
 where
     H: Hasher + 'static,
-    H::Hash: std::marker::Send,
+    H::Hash: Send,
 {
     let Some(snapshot_nullifiers) = snapshot_nullifiers else {
         warn!(pool, "No snapshot nullifiers provided");
