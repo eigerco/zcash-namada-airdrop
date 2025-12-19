@@ -204,8 +204,6 @@ pub trait UserNullifiers: Sized {
     type Stream: Stream<Item = Result<AnyFoundNote, Self::Error>> + Send;
 
     /// Consume self and return a stream of all nullifiers (both Sapling and Orchard)
-    ///
-    /// TODO: handle cancellation
     fn user_nullifiers<P: Parameters + Clone + Send + 'static>(
         &self,
         network: &P,

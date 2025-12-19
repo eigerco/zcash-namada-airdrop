@@ -11,7 +11,7 @@ use light_wallet_api::{BlockId, BlockRange, PoolType};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::{Channel, ClientTlsConfig, Uri};
-use tracing::warn;
+use tracing::{debug, warn};
 use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
@@ -60,6 +60,9 @@ pub enum LightWalletdError {
     /// Overflow error
     #[error("Overflow error")]
     OverflowError,
+    /// Index error
+    #[error("Index error: index {0} out of bounds for length {1}")]
+    IndexError(usize, usize),
     /// Stream message timeout
     #[error("Stream message timeout after {0} seconds")]
     StreamTimeout(u64),
@@ -82,7 +85,7 @@ impl LightWalletd {
     ///
     /// Returns an error if the connection to the endpoint fails.
     pub async fn connect(endpoint: Uri) -> Result<Self, LightWalletdError> {
-        // Enable TLS for HTTPS endpoints using native system roots
+        // Enable TLS for HTTPS endpoints
         let enable_tls = endpoint.scheme() == Some(&http::uri::Scheme::HTTPS);
 
         let mut channel = Channel::builder(endpoint)
@@ -314,7 +317,12 @@ impl UserNullifiers for LightWalletd {
                         LightWalletdError::StreamTimeout(STREAM_MESSAGE_TIMEOUT_SECS)
                     })??;
 
-                let Some(block) = block else { break };
+                let Some(block) = block else {
+                    debug!("Lightwalletd block stream ended");
+                    break
+                };
+
+                let notes = tokio::task::block_in_place(|| decrypt_compact_block(&network, &block, &keys))?;
 
                 // Get the Sapling commitment tree size at the END of this block
                 // This is reported in chain_metadata
@@ -323,19 +331,21 @@ impl UserNullifiers for LightWalletd {
                     .as_ref()
                     .map_or(0, |m| m.sapling_commitment_tree_size);
 
-                let notes = tokio::task::block_in_place(|| decrypt_compact_block(&network, &block, &keys))?;
-
                 // Build a map of cumulative Sapling outputs per transaction
                 // This helps us calculate the position of each output in the commitment tree
-                let mut tx_sapling_start_positions: Vec<u32> = Vec::with_capacity(block.vtx.len());
+                let mut tx_sapling_start_positions = Vec::with_capacity(block.vtx.len());
                 let mut cumulative = 0_u32;
                 for tx in &block.vtx {
                     tx_sapling_start_positions.push(cumulative);
-                    cumulative = cumulative.checked_add(u32::try_from(tx.outputs.len())?).ok_or(LightWalletdError::OverflowError)?;
+                    cumulative = cumulative
+                        .checked_add(u32::try_from(tx.outputs.len())?)
+                        .ok_or(LightWalletdError::OverflowError)?;
                 }
 
                 // The tree size at the start of the block is the end size minus all outputs in this block
-                let sapling_tree_size_start = sapling_tree_size_end.saturating_sub(cumulative);
+                let sapling_tree_size_start = sapling_tree_size_end
+                    .checked_sub(cumulative)
+                    .ok_or(LightWalletdError::OverflowError)?;
 
                 for note in notes {
                     match note {
@@ -344,18 +354,23 @@ impl UserNullifiers for LightWalletd {
                             // Position = tree_size_at_block_start + outputs_before_this_tx + output_index
                             let tx_start = tx_sapling_start_positions
                                 .get(sapling_note.tx_index)
-                                .copied()
-                                .unwrap_or(0);
-                            let position = u64::from(sapling_tree_size_start)
-                                .saturating_add(u64::from(tx_start))
-                                .saturating_add(u64::try_from(sapling_note.output_index).unwrap_or(u64::MAX));
+                                .ok_or(LightWalletdError::IndexError(
+                                    tx_sapling_start_positions.len(),
+                                    sapling_note.tx_index,
+                                ))?;
+                            let position = u64::from(
+                                sapling_tree_size_start
+                                    .checked_add(*tx_start)
+                                    .and_then(|v| v.checked_add(u32::try_from(sapling_note.output_index).ok()?))
+                                    .ok_or(LightWalletdError::OverflowError)?,
+                            );
 
                             // Failed silently if txid is not valid
                             // Txid does not affect note decryption or nullifier calculation
-                            let txid = block.vtx.get(sapling_note.tx_index)
-                                .map_or_else(|| TxId::NULL, |tx| {
-                                    TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL)
-                                });
+                            let txid = block.vtx.get(sapling_note.tx_index).map_or_else(
+                                || TxId::NULL,
+                                |tx| TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL),
+                            );
 
                             yield AnyFoundNote::Sapling(FoundNote::<SaplingNote> {
                                 note: SaplingNote {
