@@ -1,0 +1,42 @@
+diff --git i/src/note.rs w/src/note.rs
+index 6a9c70b..95784a6 100644
+--- i/src/note.rs
++++ w/src/note.rs
+@@ -287,6 +287,21 @@ impl Note {
+             self.rho.0,
+             self.rseed.psi(&self.rho),
+             self.commitment(),
++            "z.cash:Orchard",
++            b"K",
++        )
++    }
++
++    /// A nullifier that will be derived from the note, but it will never
++    /// appear in a transaction.
++    pub fn hiding_nullifier(&self, fvk: &FullViewingKey, domain: &str, value: &[u8]) -> Nullifier {
++        Nullifier::derive(
++            fvk.nk(),
++            self.rho.0,
++            self.rseed.psi(&self.rho),
++            self.commitment(),
++            domain,
++            value,
+         )
+     }
+ }
+diff --git i/src/note/nullifier.rs w/src/note/nullifier.rs
+index 15ac369..361b65e 100644
+--- i/src/note/nullifier.rs
++++ w/src/note/nullifier.rs
+@@ -54,8 +54,10 @@ impl Nullifier {
+         rho: pallas::Base,
+         psi: pallas::Base,
+         cm: NoteCommitment,
++        domain_prefix: &str,
++        value: &[u8]
+     ) -> Self {
+-        let k = pallas::Point::hash_to_curve("z.cash:Orchard")(b"K");
++        let k = pallas::Point::hash_to_curve(domain_prefix)(value);
+ 
+         Nullifier(extract_p(&(k * mod_r_p(nk.prf_nf(rho) + psi) + cm.0)))
+     }

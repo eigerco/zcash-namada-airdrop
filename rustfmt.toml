@@ -1,0 +1,9 @@
+binop_separator = "Back"
+comment_width = 100
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"
+reorder_imports = true
+trailing_comma = "Vertical"
+trailing_semicolon = false
+use_field_init_shorthand = true
+wrap_comments = true

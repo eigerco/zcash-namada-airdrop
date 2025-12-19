@@ -1,0 +1,25 @@
+# Rust
+/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nix
+result
+result-*
+.patched-orchard
+.patched-sapling-crypto
+
+# Environment files
+.env
+.env.local
+
+# pre-commit
+.pre-commit-config.yaml

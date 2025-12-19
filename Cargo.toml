@@ -1,0 +1,75 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/light-wallet-api",
+  "crates/mnemonic-to-fvks",
+  "crates/non-membership-proofs",
+  "crates/airdrop",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.91.1"
+repository = "https://github.com/eigerco/zcash-namada-airdrop"
+license = "MIT"
+
+[workspace.dependencies]
+light-wallet-api = { path = "crates/light-wallet-api" }
+mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
+non-membership-proofs = { path = "crates/non-membership-proofs" }
+
+async-stream = "0.3.6"
+bip39 = "2.2.2"
+bytemuck = "1.24.0"
+clap = "4.5.53"
+clap_derive = "4.5.49"
+config = { version = "0.15.19", default-features = false }
+console-subscriber = "0.5.0"
+dotenvy = "0.15.7"
+eyre = "0.6.12"
+futures = "0.3.31"
+futures-core = "0.3.31"
+hex = "0.4"
+http = "1.4.0"
+itertools = "0.14.0"
+orchard = "0.11.0"
+prost = "0.14.1"
+rpassword = "7.4.0"
+rs_merkle = "1.5.0"
+rustls = "0.23.35"
+sapling = { package = "sapling-crypto", version = "0.5" }
+schemars = "1.1.0"
+secrecy = "0.10.3"
+serde = "1"
+serde_json = "1"
+serde_with = "3.16.1"
+sha2 = "0.10"
+sled = "0.34.7"
+thiserror = "2.0.17"
+tokio = "1.48.0"
+tonic = "0.14.2"
+tonic-prost = "0.14.2"
+tonic-prost-build = "0.14.2"
+tracing = "0.1.43"
+tracing-subscriber = "0.3.22"
+zcash_keys = "0.12.0"
+zcash_note_encryption = "0.4.1"
+zcash_primitives = "0.26.3"
+zcash_protocol = "0.7.2"
+zip32 = "0.2.1"
+
+[patch.crates-io]
+orchard = { path = "./.patched-orchard" }
+sapling-crypto = { path = "./.patched-sapling-crypto" }
+
+[workspace.lints.rust]
+missing_docs = { level = "warn", priority = -1 }
+unsafe_code = "warn"
+unused_imports = { level = "warn", priority = -1 }
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+arithmetic_side_effects = "deny"
+indexing_slicing = "deny"
+unwrap_used = "deny"
