@@ -92,6 +92,7 @@ async fn main() -> eyre::Result<()> {
             unified_full_viewing_key,
             birthday_height,
             airdrop_claims_output_file,
+            airdrop_configuration_file,
         } => {
             let ufvk = UnifiedFullViewingKey::decode(&config.network, &unified_full_viewing_key)
                 .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {:?}", e))?;
@@ -112,6 +113,7 @@ async fn main() -> eyre::Result<()> {
                 sapling_fvk,
                 birthday_height,
                 airdrop_claims_output_file,
+                airdrop_configuration_file,
             )
             .await
         }

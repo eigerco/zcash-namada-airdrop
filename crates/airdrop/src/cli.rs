@@ -80,6 +80,9 @@ pub enum Commands {
             default_value = "airdrop_claims.json"
         )]
         airdrop_claims_output_file: PathBuf,
+        /// Airdrop configuration JSON file
+        #[arg(long, env = "AIRDROP_CONFIGURATION_FILE")]
+        airdrop_configuration_file: Option<PathBuf>,
     },
     /// Prints the schema of the airdrop configuration JSON file
     AirdropConfigurationSchema,

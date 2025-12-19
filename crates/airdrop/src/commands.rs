@@ -17,10 +17,11 @@ use rs_merkle::{Hasher, MerkleTree};
 use tracing::{debug, info, instrument, warn};
 use zcash_protocol::consensus::{MainNetwork, Network, TestNetwork};
 
+use crate::airdrop_configuration::AirdropConfiguration;
 use crate::chain_nullifiers::{self, load_nullifiers_from_file};
 use crate::cli::CommonArgs;
+use crate::is_sanitize;
 use crate::proof::generate_non_membership_proof;
-use crate::{airdrop_configuration, is_sanitize};
 
 #[instrument(skip_all, fields(
     snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end())
@@ -50,7 +51,7 @@ pub async fn build_airdrop_configuration(
     let sapling_root = sapling_root?;
     let orchard_root = orchard_root?;
 
-    airdrop_configuration::AirdropConfiguration::new(
+    AirdropConfiguration::new(
         sapling_root.as_deref(),
         orchard_root.as_deref(),
         config.snapshot,
@@ -105,6 +106,7 @@ where
 ))]
 #[allow(
     clippy::too_many_lines,
+    clippy::too_many_arguments,
     reason = "Complex but coherent airdrop claim logic"
 )]
 pub async fn airdrop_claim(
@@ -115,6 +117,7 @@ pub async fn airdrop_claim(
     sapling_fvk: &sapling::zip32::DiversifiableFullViewingKey,
     birthday_height: u64,
     airdrop_claims_output_file: PathBuf,
+    airdrop_configuration_file: Option<PathBuf>,
 ) -> eyre::Result<()> {
     ensure!(
         birthday_height <= *config.snapshot.end(),
@@ -127,6 +130,10 @@ pub async fn airdrop_claim(
         "Airdrop claims can only be generated using lightwalletd as the source"
     );
 
+    if airdrop_configuration_file.is_none() {
+        warn!("Airdrop configuration file is not provided. Merkle roots cannot be verified");
+    }
+
     let lightwalletd_url = config
         .source
         .lightwalletd_url
@@ -137,6 +144,18 @@ pub async fn airdrop_claim(
     let sapling = airdrop_claim_merkle_tree("sapling", sapling_snapshot_nullifiers);
     let orchard = airdrop_claim_merkle_tree("orchard", orchard_snapshot_nullifiers);
     let (sapling_result, orchard_result) = tokio::try_join!(sapling, orchard)?;
+
+    if let Some(ref file) = airdrop_configuration_file {
+        let airdrop_config: AirdropConfiguration =
+            serde_json::from_str(&tokio::fs::read_to_string(file).await?)?;
+
+        verify_merkle_roots(
+            &airdrop_config,
+            sapling_result.as_ref().map(|(_, tree)| tree),
+            orchard_result.as_ref().map(|(_, tree)| tree),
+        )
+        .await?;
+    }
 
     // Connect to lightwalletd
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
@@ -305,9 +324,38 @@ where
     Ok(Some((nullifiers, merkle_tree)))
 }
 
+/// Verifies that the merkle roots from the snapshot nullifiers match the airdrop configuration.
+#[instrument(skip_all)]
+async fn verify_merkle_roots<H>(
+    airdrop_config: &AirdropConfiguration,
+    sapling_tree: Option<&MerkleTree<H>>,
+    orchard_tree: Option<&MerkleTree<H>>,
+) -> eyre::Result<()>
+where
+    H: Hasher,
+{
+    let sapling_root = sapling_tree.and_then(MerkleTree::root_hex);
+    ensure!(
+        airdrop_config.sapling_merkle_root == sapling_root,
+        "Sapling merkle root mismatch with airdrop configuration"
+    );
+
+    let orchard_root = orchard_tree.and_then(MerkleTree::root_hex);
+    ensure!(
+        airdrop_config.orchard_merkle_root == orchard_root,
+        "Orchard merkle root mismatch with airdrop configuration"
+    );
+
+    info!(
+        sapling_root,
+        orchard_root, "Airdrop configuration merkle roots verified"
+    );
+    Ok(())
+}
+
 #[instrument]
 pub async fn airdrop_configuration_schema() -> eyre::Result<()> {
-    let schema = airdrop_configuration::AirdropConfiguration::schema();
+    let schema = AirdropConfiguration::schema();
     let schema_str = serde_json::to_string_pretty(&schema)?;
     println!("Airdrop Configuration JSON Schema:\n{schema_str}");
 

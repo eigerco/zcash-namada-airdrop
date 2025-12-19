@@ -2,24 +2,24 @@ use std::ops::RangeInclusive;
 use std::path::Path;
 
 use schemars::{JsonSchema, Schema};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct AirdropConfiguration<'a> {
-    snapshot_range: RangeInclusive<u64>,
-    sapling_merkle_root: Option<&'a str>,
-    orchard_merkle_root: Option<&'a str>,
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct AirdropConfiguration {
+    pub snapshot_range: RangeInclusive<u64>,
+    pub sapling_merkle_root: Option<String>,
+    pub orchard_merkle_root: Option<String>,
 }
 
-impl<'a> AirdropConfiguration<'a> {
-    pub const fn new(
-        sapling_merkle_root: Option<&'a str>,
-        orchard_merkle_root: Option<&'a str>,
+impl AirdropConfiguration {
+    pub fn new(
+        sapling_merkle_root: Option<&str>,
+        orchard_merkle_root: Option<&str>,
         snapshot_range: RangeInclusive<u64>,
     ) -> Self {
         Self {
-            sapling_merkle_root,
-            orchard_merkle_root,
+            sapling_merkle_root: sapling_merkle_root.map(ToOwned::to_owned),
+            orchard_merkle_root: orchard_merkle_root.map(ToOwned::to_owned),
             snapshot_range,
         }
     }
