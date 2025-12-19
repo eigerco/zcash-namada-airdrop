@@ -51,7 +51,7 @@ fn init_tracing() {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> eyre::Result<()> {
     // Initialize rustls crypto provider (required for TLS connections)
     rustls::crypto::ring::default_provider()

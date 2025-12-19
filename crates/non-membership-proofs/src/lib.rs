@@ -148,7 +148,7 @@ pub fn build_leaf(nf1: &Nullifier, nf2: &Nullifier) -> [u8; 2 * NULLIFIER_SIZE] 
     leaf
 }
 
-/// Write nullifi to binary file without intermediate allocation
+/// Write nullifiers to binary file without intermediate allocation
 ///
 /// # Errors
 /// If writing to the file fails

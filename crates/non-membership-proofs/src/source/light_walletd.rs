@@ -266,6 +266,7 @@ impl UserNullifiers for LightWalletd {
     type Error = LightWalletdError;
     type Stream = Pin<Box<dyn Stream<Item = Result<AnyFoundNote, Self::Error>> + Send>>;
 
+    /// This function is using `block_in_place` and requires a multi-threaded Tokio runtime.
     fn user_nullifiers<P: Parameters + Clone + Send + 'static>(
         &self,
         network: &P,
