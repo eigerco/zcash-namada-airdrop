@@ -110,14 +110,16 @@ airdrop airdrop-claim \
   --orchard-snapshot-nullifiers ./binaries/orchard-nullifiers-testnet.bin \
   --unified-full-viewing-key  uviewtest1kfhkx5fphx2ahhnpsme4sqsvx04nzuryd6vhd79rs2uv7x23gvtzlfvjq0r705kucmqcl9yf50nglmsn60c0chd8x94lnfa6s46fhdpvlv9lc33l76j32t62ucl0l70yxh2r77nqunawcxexjcg8gldmepqc9nufnn386ftas9xjalcrl3y8jycgtq6xq8lrvqm47hhrsqjcrm8e8pv7u595ma8dzdnps83fwspsvadz4dztsw8e9lwsvphzfglx0zxy32jyl7xcxhxnzw0lp5kzcpzjvwwwh3l80g9vdn7gfaj6927sg8m57gpafvj0wgu3upjdj63mxvxwd8qezcnvzlsd938dfaujm0usgz93gkk4cm60ejrj8zfckse2w7gaf8cj0n6k5 \
   --birthday-height 3663119 \
-  --airdrop-claims-output-file my_claims.json
+  --airdrop-claims-output-file my_claims.json \
+  --airdrop-configuration-file airdrop_configuration.json
 ```
 
 This command will:
 
-1. Scan the blockchain for notes belonging to your viewing keys
-2. For each unspent note found, generate a non-membership proof
-3. Output the proofs to `my_claims.json`
+1. Verify the snapshot Merkle roots match the airdrop configuration (if provided)
+2. Scan the blockchain for notes belonging to your viewing keys
+3. For each unspent note found, generate a non-membership proof
+4. Output the proofs to `my_claims.json`
 
 **Parameters explained:**
 
@@ -130,6 +132,9 @@ This command will:
 | `--unified-full-viewing-key`    | Your Unified Full Viewing Key in Bech32 format               |
 | `--birthday-height`             | The block height when your wallet was created (optimization) |
 | `--airdrop-claims-output-file`  | Output file for your claim proofs                            |
+| `--airdrop-configuration-file`  | (Optional) Airdrop configuration JSON to verify Merkle roots |
+
+> **Recommended**: Provide the `--airdrop-configuration-file` from the official airdrop to verify your snapshot files match the expected Merkle roots. This ensures your generated proofs will be valid.
 
 ### Step 4: Submit Proofs
 
@@ -148,12 +153,13 @@ The output `my_claims.json` contains non-membership proofs that can be verified 
 
 Instead of passing arguments on the command line, you can use environment variables or a `.env` file:
 
-| Variable           | Description                             |
-| ------------------ | --------------------------------------- |
-| `NETWORK`          | Network to use (`mainnet` or `testnet`) |
-| `LIGHTWALLETD_URL` | Lightwalletd gRPC endpoint URL          |
-| `SAPLING_FILE`     | Path to Sapling nullifiers file         |
-| `ORCHARD_FILE`     | Path to Orchard nullifiers file         |
+| Variable                      | Description                             |
+| ----------------------------- | --------------------------------------- |
+| `NETWORK`                     | Network to use (`mainnet` or `testnet`) |
+| `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL          |
+| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file         |
+| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file         |
+| `AIRDROP_CONFIGURATION_FILE`  | Path to airdrop configuration JSON      |
 
 ## Troubleshooting
 
