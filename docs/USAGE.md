@@ -106,8 +106,8 @@ airdrop airdrop-claim \
   --network testnet \
   --snapshot 280000..=3743871 \
   --lightwalletd-url https://testnet.zec.rocks:443 \
-  --sapling-snapshot-nullifiers ./binaries/sapling-nullifiers-testnet.bin \
-  --orchard-snapshot-nullifiers ./binaries/orchard-nullifiers-testnet.bin \
+  --sapling-snapshot-nullifiers sapling-nullifiers-testnet.bin \
+  --orchard-snapshot-nullifiers orchard-nullifiers-testnet.bin \
   --unified-full-viewing-key  uviewtest1kfhkx5fphx2ahhnpsme4sqsvx04nzuryd6vhd79rs2uv7x23gvtzlfvjq0r705kucmqcl9yf50nglmsn60c0chd8x94lnfa6s46fhdpvlv9lc33l76j32t62ucl0l70yxh2r77nqunawcxexjcg8gldmepqc9nufnn386ftas9xjalcrl3y8jycgtq6xq8lrvqm47hhrsqjcrm8e8pv7u595ma8dzdnps83fwspsvadz4dztsw8e9lwsvphzfglx0zxy32jyl7xcxhxnzw0lp5kzcpzjvwwwh3l80g9vdn7gfaj6927sg8m57gpafvj0wgu3upjdj63mxvxwd8qezcnvzlsd938dfaujm0usgz93gkk4cm60ejrj8zfckse2w7gaf8cj0n6k5 \
   --birthday-height 3663119 \
   --airdrop-claims-output-file my_claims.json \
