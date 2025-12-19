@@ -79,6 +79,11 @@ pub enum Commands {
         )]
         airdrop_claims_output_file: PathBuf,
     },
+    AirdropConfigurationSchema {
+        /// Show the JSON schema for the airdrop configuration
+        #[arg(long, default_value_t = true)]
+        show: bool,
+    },
 }
 
 #[derive(Debug, clap::Args)]

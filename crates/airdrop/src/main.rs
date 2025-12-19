@@ -3,9 +3,8 @@
 use clap::Parser as _;
 use zcash_keys::keys::UnifiedFullViewingKey;
 
-
 use crate::cli::{Cli, Commands, CommonArgs};
-use crate::commands::{airdrop_claim, build_airdrop_configuration};
+use crate::commands::{airdrop_claim, airdrop_configuration_schema, build_airdrop_configuration};
 
 mod airdrop_configuration;
 mod chain_nullifiers;
@@ -116,6 +115,7 @@ async fn main() -> eyre::Result<()> {
             )
             .await
         }
+        Commands::AirdropConfigurationSchema { show } => airdrop_configuration_schema(show).await,
     };
 
     if let Err(e) = res {

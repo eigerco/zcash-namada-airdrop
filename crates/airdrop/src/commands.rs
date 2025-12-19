@@ -53,6 +53,7 @@ pub async fn build_airdrop_configuration(
     airdrop_configuration::AirdropConfiguration::new(
         sapling_root.as_deref(),
         orchard_root.as_deref(),
+        config.snapshot,
     )
     .export_config(&configuration_output_file)
     .await?;
@@ -296,4 +297,15 @@ where
     .await??;
 
     Ok(Some((nullifiers, merkle_tree)))
+}
+
+#[instrument]
+pub async fn airdrop_configuration_schema(show: bool) -> eyre::Result<()> {
+    if show {
+        let schema = airdrop_configuration::AirdropConfiguration::schema();
+        let schema_str = serde_json::to_string_pretty(&schema)?;
+        println!("Airdrop Configuration JSON Schema: {}", schema_str);
+    }
+
+    Ok(())
 }
