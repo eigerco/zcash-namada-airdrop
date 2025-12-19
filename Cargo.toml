@@ -1,9 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+  "crates/light-wallet-api",
+  "crates/mnemonic-to-fvks",
+  "crates/non-membership-proofs",
+  "crates/airdrop",
+]
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.91.1"
+repository = "https://github.com/eigerco/zcash-namada-airdrop"
+license = "MIT"
 
 [workspace.dependencies]
 light-wallet-api = { path = "crates/light-wallet-api" }
