@@ -1758,6 +1758,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "orchard-airdrop-circuit"
+version = "0.1.0"
+dependencies = [
+ "ff",
+ "group",
+ "halo2_gadgets",
+ "halo2_proofs",
+ "hex",
+ "orchard",
+ "pasta_curves",
+ "rand",
+ "rand_core",
+ "rs_merkle",
+ "serde",
+ "thiserror 2.0.17",
+ "tracing",
+]
+
+[[package]]
 name = "pairing"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

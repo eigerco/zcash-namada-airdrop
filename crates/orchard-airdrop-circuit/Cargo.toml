@@ -1,0 +1,37 @@
+[package]
+name = "orchard-airdrop-circuit"
+version = "0.1.0"
+edition.workspace = true
+license = "MIT"
+description = "ZK circuit for Orchard airdrop proof of funds"
+
+[dependencies]
+# Halo2 proving system (same versions as patched orchard)
+halo2_proofs = "0.3"
+halo2_gadgets = "0.3"
+
+# Pasta curves (Pallas/Vesta)
+pasta_curves = "0.5"
+
+# Field and group arithmetic
+ff = "0.13"
+group = "0.13"
+
+# Orchard dependencies (for note structures and existing gadgets)
+orchard = { workspace = true }
+
+# Merkle tree operations
+rs_merkle = { workspace = true }
+
+# Utilities
+rand = "0.8"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rand_core = "0.6"
+
+[lints]
+workspace = true

@@ -5,6 +5,7 @@ members = [
   "crates/mnemonic-to-fvks",
   "crates/non-membership-proofs",
   "crates/airdrop",
+  "crates/orchard-airdrop-circuit",
 ]
 
 [workspace.package]
