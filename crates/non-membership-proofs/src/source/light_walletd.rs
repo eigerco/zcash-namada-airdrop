@@ -61,8 +61,13 @@ pub enum LightWalletdError {
     #[error("Overflow error")]
     OverflowError,
     /// Index error
-    #[error("Index error: index {0} out of bounds for length {1}")]
-    IndexError(usize, usize),
+    #[error("Index error: index {index} out of bounds for length {length}")]
+    IndexError {
+        /// The invalid index
+        index: usize,
+        /// The length of the collection
+        length: usize,
+    },
     /// Stream message timeout
     #[error("Stream message timeout after {0} seconds")]
     StreamTimeout(u64),
@@ -355,10 +360,10 @@ impl UserNullifiers for LightWalletd {
                             // Position = tree_size_at_block_start + outputs_before_this_tx + output_index
                             let tx_start = tx_sapling_start_positions
                                 .get(sapling_note.tx_index)
-                                .ok_or(LightWalletdError::IndexError(
-                                    tx_sapling_start_positions.len(),
-                                    sapling_note.tx_index,
-                                ))?;
+                                .ok_or(LightWalletdError::IndexError{
+                                    index: sapling_note.tx_index,
+                                    length: tx_sapling_start_positions.len(),
+                                })?;
                             let position = u64::from(
                                 sapling_tree_size_start
                                     .checked_add(*tx_start)

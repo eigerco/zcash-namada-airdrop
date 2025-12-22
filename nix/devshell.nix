@@ -41,6 +41,7 @@
         cargo-hack
         cargo-machete # Check for unused dependencies
         cargo-deny # Cargo plugin for linting your dependencies
+        cargo-llvm-cov # Code coverage
 
         # General development tools
         git

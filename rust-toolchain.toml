@@ -1,7 +1,7 @@
 [toolchain]
 channel = "stable"
-targets = ["wasm32-unknown-unknown"]
-components = ["rust-src"]
+targets = []
+components = ["rust-src", "llvm-tools-preview"]
 
 # Check profiles for more information:
 # https://rust-lang.github.io/rustup/concepts/profiles.html

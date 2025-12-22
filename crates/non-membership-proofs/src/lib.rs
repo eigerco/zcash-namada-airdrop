@@ -168,7 +168,10 @@ where
 /// Read nullifiers from binary file without intermediate allocation
 ///
 /// # Errors
-/// If reading from the file fails
+///
+/// Returns an error if:
+/// - Reading from the file fails
+/// - The file size is not a multiple of 32 bytes (nullifier size)
 pub async fn read_raw_nullifiers<P>(path: P) -> std::io::Result<Vec<Nullifier>>
 where
     P: AsRef<Path>,
@@ -178,6 +181,18 @@ where
 
     let mut buf = Vec::with_capacity(BUF_SIZE);
     reader.read_to_end(&mut buf).await?;
+
+    if buf.len() % NULLIFIER_SIZE != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "file has {} bytes which is not a multiple of nullifier size ({})",
+                buf.len(),
+                NULLIFIER_SIZE
+            ),
+        ));
+    }
+
     let nullifiers: Vec<Nullifier> = bytemuck::cast_slice(&buf).to_vec();
 
     Ok(nullifiers)
