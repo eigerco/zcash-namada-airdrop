@@ -12,7 +12,6 @@ futures = { workspace = true }
 futures-core = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
-light-wallet-api = { workspace = true }
 orchard = { workspace = true }
 rayon = "1"
 rs_merkle = { workspace = true }
@@ -26,6 +25,9 @@ tokio = { workspace = true, features = [
 ] }
 tonic = { workspace = true, features = ["tls-native-roots"] }
 tracing = { workspace = true }
+zcash_client_backend = { workspace = true, features = [
+  "lightwalletd-tonic-tls-webpki-roots",
+] }
 zcash_note_encryption = { workspace = true }
 zcash_primitives = { workspace = true }
 zcash_protocol = { workspace = true }
