@@ -1,3 +1,0 @@
-[submodule "proto/lightwallet-protocol"]
-	path = proto/lightwallet-protocol
-	url = https://github.com/zcash/lightwallet-protocol.git
