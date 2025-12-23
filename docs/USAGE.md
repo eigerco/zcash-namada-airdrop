@@ -69,7 +69,7 @@ The `.bin` snapshot files use a simple binary format:
 - Nullifiers must be **sorted in ascending lexicographic order**
 - File size must be a multiple of 32 bytes
 
-```
+```console
 ┌──────────────────┬──────────────────┬─────┬──────────────────┐
 │  Nullifier 0     │  Nullifier 1     │ ... │  Nullifier N     │
 │    (32 bytes)    │    (32 bytes)    │     │    (32 bytes)    │

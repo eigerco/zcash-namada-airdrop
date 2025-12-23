@@ -1,0 +1,25 @@
+name: Setup Patched Dependencies
+description: Clone and patch orchard and sapling-crypto repositories
+
+runs:
+  using: composite
+  steps:
+    - name: Clone orchard
+      shell: bash
+      run: |
+        git clone --branch v0.11.0 --single-branch \
+          https://github.com/zcash/orchard.git .patched-orchard
+    - name: Patch orchard
+      shell: bash
+      run: |
+        git -C .patched-orchard apply "../nix/airdrop-orchard-nullifier.patch"
+    - name: Clone sapling-crypto
+      shell: bash
+      run: |
+        git clone --branch v0.5.0 --single-branch \
+          https://github.com/zcash/sapling-crypto.git .patched-sapling-crypto
+    - name: Patch sapling-crypto
+      shell: bash
+      run: |
+        git -C .patched-sapling-crypto apply \
+          "../nix/airdrop-sapling-nullifier.patch"

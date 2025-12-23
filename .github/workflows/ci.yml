@@ -1,0 +1,273 @@
+# CI runs incremental checks (path filtering) during PR development.
+# Full checks run before merging (via merge queue).
+#
+#  | Event             | When                      | Filter? | Result            |
+#  |-------------------|---------------------------|---------|-------------------|
+#  | push              | Push to PR branch         | Yes     | Only changed jobs |
+#  | merge_group       | Merge queue (before merge)| No      | All jobs run      |
+#  | workflow_dispatch | Manual trigger            | No      | All jobs run      |
+
+name: ci
+on:
+  push:
+    branches-ignore:
+      - main
+  merge_group:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      any: ${{ steps.filter.outputs.any || 'true' }}
+      cargo-toml: ${{ steps.filter.outputs.cargo-toml || 'true' }}
+      deps: ${{ steps.filter.outputs.deps || 'true' }}
+      markdown: ${{ steps.filter.outputs.markdown || 'true' }}
+      rust-code: ${{ steps.filter.outputs.rust-code || 'true' }}
+      toml: ${{ steps.filter.outputs.toml || 'true' }}
+      yaml: ${{ steps.filter.outputs.yaml || 'true' }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'push'
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+        with:
+          fetch-depth: 2
+      - name: Filter changed paths
+        if: github.event_name == 'push'
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # tag: v3.0.2
+        id: filter
+        with:
+          base: ${{ github.event.before }}
+          filters: |
+            rust-code:
+              - '**.rs'
+              - '**/Cargo.toml'
+              - 'Cargo.lock'
+            deps:
+              - '**/Cargo.toml'
+              - 'Cargo.lock'
+              - 'deny.toml'
+            cargo-toml:
+              - '**/Cargo.toml'
+            toml:
+              - '**.toml'
+            markdown:
+              - '**.md'
+            yaml:
+              - '**.yml'
+              - '**.yaml'
+            any:
+              - '**'
+  fmt:
+    needs: changes
+    if: needs.changes.outputs.rust-code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    name: nightly / fmt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # branch=master
+        id: toolchain
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - run: rustup override set "${TOOLCHAIN}"
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
+  lint:
+    needs: changes
+    if: needs.changes.outputs.rust-code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: nightly / clippy, test and docs
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+        with:
+          submodules: recursive
+      - name: Install protoc
+        uses: ./.github/actions/setup-protoc
+      - name: Setup patched dependencies
+        uses: ./.github/actions/setup-patched-deps
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # branch=master
+        id: toolchain
+        with:
+          toolchain: nightly
+          components: clippy
+      - run: rustup override set "${TOOLCHAIN}"
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag: v2.8.2
+        with:
+          shared-key: lint-all-features
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # tag: v2.65.1
+        with:
+          tool: cargo-hack
+      - name: cargo hack
+        run: cargo hack --no-dev-deps --feature-powerset check --locked
+      - name: cargo test
+        run: cargo test --locked --all-features
+      - name: Check Documentation
+        run: cargo doc --locked --no-deps --workspace --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings
+  build:
+    needs: changes
+    if: needs.changes.outputs.rust-code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: stable / build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+        with:
+          submodules: recursive
+      - name: Install protoc
+        uses: ./.github/actions/setup-protoc
+      - name: Setup patched dependencies
+        uses: ./.github/actions/setup-patched-deps
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # branch=master
+        id: toolchain
+        with:
+          toolchain: stable
+      - run: rustup override set "${TOOLCHAIN}"
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag: v2.8.2
+        with:
+          shared-key: build-release
+      - name: cargo build --release
+        run: cargo build --release --locked
+  msrv:
+    needs: changes
+    if: needs.changes.outputs.rust-code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: MSRV / 1.88.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+        with:
+          submodules: recursive
+      - name: Install protoc
+        uses: ./.github/actions/setup-protoc
+      - name: Setup patched dependencies
+        uses: ./.github/actions/setup-patched-deps
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # branch=master
+        id: toolchain
+        with:
+          toolchain: "1.88.0"
+      - run: rustup override set "${TOOLCHAIN}"
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag: v2.8.2
+        with:
+          shared-key: msrv
+      - name: cargo check
+        run: cargo check --locked --all-targets --all-features
+  cargo-deny:
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
+    name: Check licenses & security
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+        with:
+          submodules: recursive
+      - name: Setup patched dependencies
+        uses: ./.github/actions/setup-patched-deps
+      - name: Check licenses
+        uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # tag: v2.0.14
+        with:
+          command: check licenses
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # tag: v2.65.1
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit
+  machete:
+    needs: changes
+    if: needs.changes.outputs.cargo-toml == 'true'
+    name: Check unused dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # tag: v2.65.1
+        with:
+          tool: cargo-machete
+      - name: cargo machete
+        run: cargo machete
+  toml-fmt:
+    needs: changes
+    if: needs.changes.outputs.toml == 'true'
+    name: toml fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Install taplo
+        uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # tag: v2.65.1
+        with:
+          tool: taplo
+      - name: taplo fmt --check
+        run: taplo fmt --check
+  markdown-lint:
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    name: markdown lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Lint markdown
+        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # tag: v22.0.0
+  yaml-lint:
+    needs: changes
+    if: needs.changes.outputs.yaml == 'true'
+    name: yaml lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Lint YAML
+        uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # tag: v3.1.1
+  typos:
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    name: typos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Check typos
+        uses: crate-ci/typos@2d0ce569feab1f8752f1dde43cc2f2aa53236e06 # tag: v1.40.0

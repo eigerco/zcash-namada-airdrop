@@ -42,6 +42,7 @@
         cargo-machete # Check for unused dependencies
         cargo-deny # Cargo plugin for linting your dependencies
         cargo-llvm-cov # Code coverage
+        cargo-msrv # Check minimum supported Rust version
 
         # General development tools
         git
