@@ -1,21 +1,26 @@
 # CI runs incremental checks (path filtering) during PR development.
 # Full checks run before merging (via merge queue).
 #
-#  | Event             | When                      | Filter? | Result            |
-#  |-------------------|---------------------------|---------|-------------------|
-#  | push              | Push to PR branch         | Yes     | Only changed jobs |
-#  | merge_group       | Merge queue (before merge)| No      | All jobs run      |
-#  | workflow_dispatch | Manual trigger            | No      | All jobs run      |
+#  | Event                      | When                      | Filter? | Result            |
+#  |----------------------------|---------------------------|---------|-------------------|
+#  | pull_request (opened)      | PR created/reopened       | No      | All jobs run      |
+#  | pull_request (synchronize) | New commits pushed        | Yes     | Only changed jobs |
+#  | merge_group                | Merge queue (before merge)| No      | All jobs run      |
+#  | workflow_dispatch          | Manual trigger            | No      | All jobs run      |
+#
+# Note: If CI is running from `opened` and a new commit is pushed, the running CI is cancelled.
 
 name: ci
 on:
-  push:
-    branches-ignore:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
       - main
   merge_group:
   workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -33,12 +38,12 @@ jobs:
       yaml: ${{ steps.filter.outputs.yaml || 'true' }}
     steps:
       - name: Checkout
-        if: github.event_name == 'push'
+        if: github.event.action == 'synchronize'
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
         with:
           fetch-depth: 2
       - name: Filter changed paths
-        if: github.event_name == 'push'
+        if: github.event.action == 'synchronize'
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # tag: v3.0.2
         id: filter
         with:
