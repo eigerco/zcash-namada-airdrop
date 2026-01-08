@@ -6,8 +6,5 @@ publish = false
 description = "Shared test utilities for the workspace"
 license.workspace = true
 
-[dependencies]
-non-membership-proofs = { workspace = true }
-
 [lints]
 workspace = true

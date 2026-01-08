@@ -7,8 +7,6 @@ use std::pin::Pin;
 
 use futures::Stream;
 use orchard::Note as OrchardNote;
-use orchard::keys::FullViewingKey as OrchardFvk;
-use sapling::zip32::DiversifiableFullViewingKey;
 use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
@@ -243,8 +241,7 @@ pub trait UserNullifiers: Sized {
         &self,
         network: &P,
         range: RangeInclusive<u64>,
-        orchard_fvk: &OrchardFvk,
-        sapling_fvk: &DiversifiableFullViewingKey,
+        keys: ViewingKeys,
     ) -> Self::Stream;
 }
 
@@ -256,7 +253,7 @@ mod tests {
         FullViewingKey as OrchardFvk, Scope as OrchardScope, SpendingKey as OrchardSpendingKey,
     };
     use orchard::value::NoteValue as OrchardNoteValue;
-    use sapling::zip32::ExtendedSpendingKey;
+    use sapling::zip32::{DiversifiableFullViewingKey, ExtendedSpendingKey};
     use zcash_protocol::TxId;
     use zip32::{AccountId, Scope};
 

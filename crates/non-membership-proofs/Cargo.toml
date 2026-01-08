@@ -8,14 +8,14 @@ rust-version.workspace = true
 [dependencies]
 async-stream = { workspace = true }
 blake2s_simd = { workspace = true }
+bridgetree = { workspace = true }
 bytemuck = { workspace = true }
 futures = { workspace = true, features = ["compat"] }
-hex = { workspace = true }
 http = { workspace = true }
+incrementalmerkletree = { workspace = true }
 orchard = { workspace = true }
-rayon = { workspace = true }
-rs_merkle = { workspace = true }
 sapling = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "rt-multi-thread",

@@ -1,7 +1,5 @@
 //! Shared test utilities for the workspace.
 
-use non_membership_proofs::Nullifier;
-
 /// Helper macro to create a nullifier with a specific last byte.
 #[macro_export]
 macro_rules! nf {
@@ -21,9 +19,3 @@ macro_rules! nfs {
         v
     }};
 }
-
-/// The minimum nullifier (all bytes zero).
-pub const MIN_NF: Nullifier = [0_u8; 32];
-
-/// The maximum nullifier (all bytes 0xFF).
-pub const MAX_NF: Nullifier = [0xFF_u8; 32];

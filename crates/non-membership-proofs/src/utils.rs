@@ -1,5 +1,9 @@
 //! Utility functions used across the non-membership proofs crate
 
+use std::ops::Deref;
+
+use crate::Nullifier;
+
 #[allow(
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
@@ -35,9 +39,42 @@ impl<const N: usize> ReverseBytes<N> for Vec<u8> {
     }
 }
 
+/// A collection of nullifiers that have been sanitised by sorting and deduplication.
+///
+/// Some functions have the precondition that the input nullifiers are sorted and contain no
+/// duplicates. This type enforces that invariant
+#[derive(Debug, PartialEq, Eq)]
+pub struct SanitiseNullifiers {
+    nullifiers: Vec<Nullifier>,
+}
+
+impl SanitiseNullifiers {
+    /// Create a new `SanitiseNullifiers` by sorting and deduplicating the input nullifiers.
+    #[must_use]
+    pub fn new(mut nullifiers: Vec<Nullifier>) -> Self {
+        if !nullifiers.is_sorted() {
+            nullifiers.sort_unstable();
+        }
+        nullifiers.dedup();
+
+        Self { nullifiers }
+    }
+}
+
+impl Deref for SanitiseNullifiers {
+    type Target = [Nullifier];
+
+    fn deref(&self) -> &Self::Target {
+        &self.nullifiers
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ReverseBytes;
+    use test_utils::nfs;
+
+    use super::*;
+    use crate::utils::SanitiseNullifiers;
 
     #[test]
     fn test_reverse_bytes() {
@@ -52,5 +89,15 @@ mod tests {
         let data = [1_u8, 2_u8, 3_u8];
         let reversed: Option<[u8; 5_usize]> = data.reverse_bytes();
         assert_eq!(reversed, None);
+    }
+
+    #[test]
+    fn test_sanitise_nullifiers() {
+        let nullifiers = nfs![3_u8, 2_u8, 1_u8, 2_u8, 3_u8, 1_u8];
+
+        let sanitised = SanitiseNullifiers::new(nullifiers);
+
+        let expected = nfs![1_u8, 2_u8, 3_u8];
+        assert_eq!(*sanitised, expected);
     }
 }

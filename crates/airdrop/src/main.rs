@@ -1,6 +1,7 @@
 //! Airdrop CLI Application
 
 use clap::Parser as _;
+use non_membership_proofs::user_nullifiers::{OrchardViewingKeys, SaplingViewingKeys, ViewingKeys};
 use zcash_keys::keys::UnifiedFullViewingKey;
 
 use crate::cli::{Cli, Commands, CommonArgs};
@@ -10,19 +11,9 @@ mod airdrop_configuration;
 mod chain_nullifiers;
 mod cli;
 mod commands;
-mod proof;
+mod unspent_notes_proofs;
 
 pub(crate) const BUF_SIZE: usize = 1024 * 1024;
-
-/// Check if a slice is sorted and does not contains duplicates
-#[allow(
-    clippy::indexing_slicing,
-    clippy::missing_asserts_for_indexing,
-    reason = "Windows(2) guarantees 2 elements"
-)]
-pub(crate) fn is_sanitize<T: Ord + Clone>(v: &[T]) -> bool {
-    v.is_sorted() && !v.windows(2).any(|w| w[0] == w[1])
-}
 
 fn init_tracing() {
     #[cfg(feature = "tokio-console")]
@@ -102,12 +93,16 @@ async fn main() -> eyre::Result<()> {
                 eyre::eyre!("Unified Full Viewing Key does not contain a Sapling FVK")
             })?;
 
+            let viewing_keys = ViewingKeys {
+                sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),
+                orchard: Some(OrchardViewingKeys::from_fvk(orchard_fvk)),
+            };
+
             airdrop_claim(
                 config,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                orchard_fvk,
-                sapling_fvk,
+                viewing_keys,
                 birthday_height,
                 airdrop_claims_output_file,
                 airdrop_configuration_file,
@@ -123,26 +118,4 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use test_utils::nf;
-
-    use super::*;
-
-    #[test]
-    fn test_is_sanitize_nullifiers() {
-        let nf1 = nf!(0);
-        let nf2 = nf!(1);
-        let nf3 = nf!(2);
-
-        assert!(is_sanitize(&[nf1, nf2, nf3]));
-
-        // Nullifiers are unsorted
-        assert!(!is_sanitize(&[nf2, nf1, nf3]));
-
-        // Nullifiers contain duplicates
-        assert!(!is_sanitize(&[nf1, nf1, nf2]));
-    }
 }

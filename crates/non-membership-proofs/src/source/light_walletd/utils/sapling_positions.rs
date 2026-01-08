@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_possitions() {
+    fn valid_positions() {
         // Single tx
         let result = calculate_sapling_positions(100, Some(50), &[10]).unwrap();
         assert_eq!(result.tx_start_positions, vec![0]);
