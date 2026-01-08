@@ -2,10 +2,14 @@
 //! `ChainNullifiers` provides a streaming interface to read nullifiers from various sources.
 
 use std::ops::RangeInclusive;
+use std::pin::Pin;
 
-use futures_core::Stream;
+use futures::Stream;
 
 use crate::{Nullifier, Pool};
+
+/// A boxed stream of nullifiers with the given error type.
+pub type BoxedNullifierStream<E> = Pin<Box<dyn Stream<Item = Result<PoolNullifier, E>> + Send>>;
 
 /// A nullifier tagged with its pool
 #[derive(Debug, Clone)]

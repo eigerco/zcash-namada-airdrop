@@ -10,10 +10,6 @@ use zip32::AccountId;
 /// Complete set of Zcash keys derived from a mnemonic
 ///
 /// Contains both Full Viewing Keys (for finding notes).
-#[allow(
-    missing_debug_implementations,
-    reason = "Contains sensitive key material."
-)]
 pub struct ZcashKeys {
     /// Unified Full Viewing Key (for finding notes)
     pub ufvk: UnifiedFullViewingKey,
@@ -46,4 +42,46 @@ pub fn mnemonic_to_keys(
     let ufvk = usk.to_unified_full_viewing_key();
 
     Ok(ZcashKeys { ufvk })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Smoke test for mnemonic_to_keys function
+    #[test]
+    fn valid_mnemonic_to_keys() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let phrase = SecretBox::from(mnemonic);
+        let network = Network::TestNetwork;
+        let passphrase = SecretBox::from("");
+        let account_index = 0;
+
+        let result = mnemonic_to_keys(&phrase, network, &passphrase, account_index);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn invalid_mnemonic_to_keys() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon";
+        let phrase = SecretBox::from(mnemonic);
+        let network = Network::TestNetwork;
+        let passphrase = SecretBox::from("");
+        let account_index = 0;
+
+        let result = mnemonic_to_keys(&phrase, network, &passphrase, account_index);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn invalid_account_index() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let phrase = SecretBox::from(mnemonic);
+        let network = Network::TestNetwork;
+        let passphrase = SecretBox::from("");
+        let account_index = u32::MAX; // Exceeds AccountId max (i32::MAX)
+
+        let result = mnemonic_to_keys(&phrase, network, &passphrase, account_index);
+        assert!(result.is_err());
+    }
 }

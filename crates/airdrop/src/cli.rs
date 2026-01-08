@@ -16,10 +16,6 @@ pub struct Cli {
 }
 
 #[derive(Debug, clap::Subcommand)]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "CLI commands are only parsed once"
-)]
 pub enum Commands {
     /// Build a snapshot of nullifiers from a source
     BuildAirdropConfiguration {
@@ -193,5 +189,104 @@ fn parse_network(s: &str) -> Result<Network> {
         other => Err(eyre!(
             "Invalid network: {other}. Expected 'mainnet' or 'testnet'."
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_parse_range() {
+        let range = parse_range("1000000..=1100000");
+        let expected = 1_000_000_u64..=1_100_000_u64;
+        assert!(matches!(range, Ok(r) if r == expected));
+    }
+
+    #[test]
+    fn parse_range_invalid_cases() {
+        let result = parse_range("100-200");
+        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid range format")));
+
+        let result = parse_range("abc..=200");
+        assert!(
+            matches!(result, Err(err) if err.to_string().contains("invalid digit found in string"))
+        );
+
+        let result = parse_range("200..=100");
+        assert!(
+            matches!(result, Err(err) if err.to_string().contains("Range start must be less than or equal to end"))
+        );
+    }
+
+    #[test]
+    fn network_parse() {
+        let network = parse_network("mainnet");
+        assert!(matches!(network, Ok(Network::MainNetwork)));
+
+        let network = parse_network("testnet");
+        assert!(matches!(network, Ok(Network::TestNetwork)));
+    }
+
+    #[test]
+    fn network_parse_invalid() {
+        let result = parse_network("devnet");
+        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid network")));
+    }
+
+    #[test]
+    fn source_from_lightwalletd() {
+        let args = SourceArgs {
+            lightwalletd_url: Some("http://localhost:9067".to_string()),
+            #[cfg(feature = "file-source")]
+            input_files: None,
+        };
+
+        let source = args.try_into();
+        assert!(
+            matches!(source, Ok(Source::Lightwalletd { url }) if url == "http://localhost:9067")
+        );
+    }
+
+    #[test]
+    fn source_no_source_specified() {
+        let args = SourceArgs {
+            lightwalletd_url: None,
+            #[cfg(feature = "file-source")]
+            input_files: None,
+        };
+
+        let result: Result<Source, _> = args.try_into();
+        assert!(matches!(result, Err(err) if err.to_string().contains("No source specified")));
+    }
+
+    #[cfg(feature = "file-source")]
+    #[test]
+    fn source_from_files() {
+        let args = SourceArgs {
+            lightwalletd_url: None,
+            input_files: Some(FileSourceArgs {
+                sapling_input: Some("sapling.bin".to_string()),
+                orchard_input: Some("orchard.bin".to_string()),
+            }),
+        };
+
+        let source = args.try_into();
+        assert!(matches!(source, Ok(Source::File { .. })));
+    }
+
+    #[cfg(feature = "file-source")]
+    #[test]
+    fn source_both_specified_error() {
+        let args = SourceArgs {
+            lightwalletd_url: Some("http://localhost:9067".to_string()),
+            input_files: Some(FileSourceArgs {
+                sapling_input: Some("sapling.bin".to_string()),
+                orchard_input: None,
+            }),
+        };
+
+        let result: Result<Source, _> = args.try_into();
+        assert!(matches!(result, Err(err) if err.to_string().contains("Cannot specify both")));
     }
 }

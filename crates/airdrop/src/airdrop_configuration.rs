@@ -1,16 +1,16 @@
 //! Airdrop configuration module.
-//! This module defines the AirdropConfiguration struct, which holds
+//! This module defines the `AirdropConfiguration` struct, which holds
 //! the configuration details for an airdrop, including snapshot range
 //! and Merkle roots for Sapling and Orchard.
 
 use std::ops::RangeInclusive;
 use std::path::Path;
 
-use schemars::{JsonSchema, Schema};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for an airdrop, including snapshot range and Merkle roots.
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct AirdropConfiguration {
     /// The inclusive range of block heights for the snapshot.
     pub snapshot_range: RangeInclusive<u64>,
@@ -21,7 +21,7 @@ pub struct AirdropConfiguration {
 }
 
 impl AirdropConfiguration {
-    /// Creates a new AirdropConfiguration instance.
+    /// Creates a new `AirdropConfiguration` instance.
     ///
     /// # Arguments
     /// * `snapshot_range` - The inclusive range of block heights for the snapshot.
@@ -45,9 +45,48 @@ impl AirdropConfiguration {
         tokio::fs::write(destination, config_json).await?;
         Ok(())
     }
+}
 
-    /// Generates the JSON schema for the AirdropConfiguration struct.
-    pub fn schema() -> Schema {
-        schemars::schema_for!(AirdropConfiguration)
+#[cfg(test)]
+mod tests {
+    use tempfile::NamedTempFile;
+    use tokio::fs::File;
+    use tokio::io::AsyncReadExt;
+
+    use super::*;
+
+    #[test]
+    fn deserialize_json_format() -> eyre::Result<()> {
+        // Documents the expected JSON format for consumers
+        let json = r#"{
+          "snapshot_range": { "start": 100, "end": 200 },
+          "sapling_merkle_root": "abc",
+          "orchard_merkle_root": null
+        }"#;
+
+        let json_config: AirdropConfiguration = serde_json::from_str(json)?;
+
+        let expected_config = AirdropConfiguration::new(100..=200, Some("abc"), None);
+        assert_eq!(json_config.snapshot_range, expected_config.snapshot_range);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn export_config() -> eyre::Result<()> {
+        let config = AirdropConfiguration::new(100..=200, Some("sapling"), Some("orchard"));
+        let temp_file = NamedTempFile::new()?;
+        let path = temp_file.path();
+
+        config.export_config(path).await?;
+
+        let mut file = File::open(path).await?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).await?;
+
+        let loaded: AirdropConfiguration = serde_json::from_str(&contents)?;
+        assert_eq!(config, loaded);
+
+        Ok(())
     }
 }

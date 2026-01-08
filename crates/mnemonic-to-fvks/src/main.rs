@@ -1,39 +1,18 @@
 //! A utility to convert a Zcash mnemonic to Full Viewing Keys
 //! Supports deriving keys for Sapling and Orchard pools.
 
-use clap::Parser;
-use eyre::{Context as _, Result, bail};
+use clap::Parser as _;
+use eyre::{Context as _, Result};
 use mnemonic_to_fvks::mnemonic_to_keys;
-use zcash_protocol::consensus::Network;
 
-#[derive(Parser)]
-#[command(name = "mnemonic-to-fvks")]
-#[command(about = "A utility to convert a Zcash mnemonic to Full Viewing Keys", long_about = None)]
-struct Cli {
-    /// Specify the coin type for key derivation. Default is Mainnet. Available options: [mainnet,
-    /// testnet]
-    #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
-    network: Network,
-}
-
-fn parse_network(s: &str) -> Result<Network> {
-    match s.to_lowercase().as_str() {
-        "mainnet" => Ok(Network::MainNetwork),
-        "testnet" => Ok(Network::TestNetwork),
-        _ => bail!("Invalid network type: {s}. Use 'mainnet' or 'testnet'."),
-    }
-}
+mod cli;
+use cli::Cli;
 
 // TODO: check mlock to avoid sensitive data in swap
 
 #[allow(clippy::print_stdout, reason = "CLI utility")]
 fn main() -> Result<()> {
     // Load .env file (fails silently if not found)
-    #[allow(
-        clippy::let_underscore_must_use,
-        clippy::let_underscore_untyped,
-        reason = "Ignoring dotenv result intentionally"
-    )]
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
 

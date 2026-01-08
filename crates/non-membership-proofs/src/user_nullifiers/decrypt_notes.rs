@@ -5,8 +5,8 @@
 
 use std::num::TryFromIntError;
 
+use orchard::Note as OrchardNote;
 use orchard::keys::{FullViewingKey as OrchardFvk, PreparedIncomingViewingKey as OrchardPivk};
-use orchard::note::{Note as OrchardNote, Nullifier as OrchardNullifier};
 use orchard::note_encryption::{CompactAction, OrchardDomain};
 use sapling::NullifierDerivingKey;
 use sapling::note_encryption::{
@@ -14,10 +14,8 @@ use sapling::note_encryption::{
     Zip212Enforcement,
 };
 use sapling::zip32::DiversifiableFullViewingKey as SaplingDfvk;
-use zcash_client_backend::proto::compact_formats::{
-    CompactBlock, CompactOrchardAction, CompactSaplingOutput, CompactTx,
-};
-use zcash_note_encryption::{EphemeralKeyBytes, batch};
+use zcash_client_backend::proto::compact_formats::{CompactBlock, CompactTx};
+use zcash_note_encryption::batch;
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_protocol::consensus::{BlockHeight, Parameters};
 use zip32::Scope;
@@ -64,6 +62,7 @@ pub struct DecryptedOrchardNote {
 /// Viewing keys for decryption and nullifier derivation
 ///
 /// Provide both external (for receiving) and internal (for change) keys
+#[derive(Clone)]
 pub struct SaplingViewingKeys {
     /// External viewing key for external scope (needed for note decryption)
     /// External scope is used for incoming payments.
@@ -83,6 +82,7 @@ pub struct SaplingViewingKeys {
 }
 
 /// Viewing keys for decryption and nullifier derivation for Orchard pool
+#[derive(Clone)]
 pub struct OrchardViewingKeys {
     /// External viewing key for external scope (needed for note decryption)
     pub external: OrchardPivk,
@@ -93,6 +93,7 @@ pub struct OrchardViewingKeys {
 }
 
 /// Viewing keys for both Sapling and Orchard pools
+#[derive(Clone)]
 pub struct ViewingKeys {
     /// Sapling viewing keys (if any)
     pub sapling: Option<SaplingViewingKeys>,
@@ -141,8 +142,6 @@ pub fn decrypt_compact_block<P: Parameters>(
     Ok(notes)
 }
 
-// ============ Internal implementation ============
-
 fn decrypt_sapling_notes(
     vtx: &[CompactTx],
     keys: &SaplingViewingKeys,
@@ -162,7 +161,7 @@ fn decrypt_sapling_notes(
             .outputs
             .iter()
             .filter_map(|output| {
-                let compact = proto_to_sapling_compact(output)?;
+                let compact: CompactOutputDescription = output.try_into().ok()?;
                 let domain = SaplingDomain::new(zip212_enforcement);
                 Some((domain, compact))
             })
@@ -209,7 +208,7 @@ fn decrypt_orchard_notes(
             .actions
             .iter()
             .filter_map(|action| {
-                let compact = proto_to_orchard_compact(action)?;
+                let compact: CompactAction = action.try_into().ok()?;
                 let domain = OrchardDomain::for_compact_action(&compact);
                 Some((domain, compact))
             })
@@ -234,44 +233,6 @@ fn decrypt_orchard_notes(
 
     decrypted
 }
-
-fn proto_to_sapling_compact(output: &CompactSaplingOutput) -> Option<CompactOutputDescription> {
-    let cmu_bytes: [u8; 32] = output.cmu.as_slice().try_into().ok()?;
-    let cmu = sapling::note::ExtractedNoteCommitment::from_bytes(&cmu_bytes).into_option()?;
-
-    let epk_bytes: [u8; 32] = output.ephemeral_key.as_slice().try_into().ok()?;
-    let ephemeral_key = EphemeralKeyBytes(epk_bytes);
-
-    let enc_ciphertext: [u8; 52] = output.ciphertext.as_slice().try_into().ok()?;
-
-    Some(CompactOutputDescription {
-        cmu,
-        ephemeral_key,
-        enc_ciphertext,
-    })
-}
-
-fn proto_to_orchard_compact(action: &CompactOrchardAction) -> Option<CompactAction> {
-    let nf_bytes: [u8; 32] = action.nullifier.as_slice().try_into().ok()?;
-    let nullifier = OrchardNullifier::from_bytes(&nf_bytes).into_option()?;
-
-    let cmx_bytes: [u8; 32] = action.cmx.as_slice().try_into().ok()?;
-    let cmx = orchard::note::ExtractedNoteCommitment::from_bytes(&cmx_bytes).into_option()?;
-
-    let epk_bytes: [u8; 32] = action.ephemeral_key.as_slice().try_into().ok()?;
-    let ephemeral_key = EphemeralKeyBytes(epk_bytes);
-
-    let enc_ciphertext: [u8; 52] = action.ciphertext.as_slice().try_into().ok()?;
-
-    Some(CompactAction::from_parts(
-        nullifier,
-        cmx,
-        ephemeral_key,
-        enc_ciphertext,
-    ))
-}
-
-// ============ Helper constructors ============
 
 impl SaplingViewingKeys {
     /// Create from a Sapling `DiversifiableFullViewingKey`
@@ -305,6 +266,188 @@ impl OrchardViewingKeys {
             external: OrchardPivk::new(&fvk.to_ivk(Scope::External)),
             internal: OrchardPivk::new(&fvk.to_ivk(Scope::Internal)),
             fvk: fvk.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "Tests")]
+
+    use zcash_client_backend::proto::compact_formats::CompactBlock;
+    use zcash_protocol::consensus::MainNetwork;
+
+    use super::*;
+
+    #[test]
+    fn decrypt_empty_block_no_keys() {
+        let block = CompactBlock {
+            height: 1000,
+            ..Default::default()
+        };
+        let keys = ViewingKeys {
+            sapling: None,
+            orchard: None,
+        };
+
+        let result = decrypt_compact_block(&MainNetwork, &block, &keys).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn decrypt_empty_block_with_empty_vtx() {
+        let block = CompactBlock {
+            height: 1000,
+            vtx: vec![],
+            ..Default::default()
+        };
+        let keys = ViewingKeys {
+            sapling: None,
+            orchard: None,
+        };
+
+        let result = decrypt_compact_block(&MainNetwork, &block, &keys).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn block_height_overflow() {
+        let block = CompactBlock {
+            height: u64::MAX, // Exceeds u32::MAX
+            ..Default::default()
+        };
+        let keys = ViewingKeys {
+            sapling: None,
+            orchard: None,
+        };
+
+        let result = decrypt_compact_block(&MainNetwork, &block, &keys);
+        assert!(matches!(result, Err(DecryptError::BlockHeightOverflow(_))));
+    }
+
+    #[test]
+    fn error_display() {
+        let err = u32::try_from(u64::MAX).unwrap_err();
+        let decrypt_err = DecryptError::BlockHeightOverflow(err);
+        let msg = decrypt_err.to_string();
+        assert!(msg.contains("Block height overflow"));
+    }
+
+    mod key_tests {
+        use orchard::keys::SpendingKey as OrchardSpendingKey;
+        use sapling::zip32::ExtendedSpendingKey;
+        use zcash_protocol::consensus::MainNetwork;
+        use zip32::AccountId;
+
+        use super::*;
+
+        fn sapling_dfvk() -> sapling::zip32::DiversifiableFullViewingKey {
+            // Create a test spending key from seed
+            let seed = [0_u8; 32];
+            let extsk = ExtendedSpendingKey::master(&seed);
+            extsk.to_diversifiable_full_viewing_key()
+        }
+
+        fn orchard_fvk() -> orchard::keys::FullViewingKey {
+            let seed = [0_u8; 32];
+            let sk = OrchardSpendingKey::from_zip32_seed(&seed, 0, AccountId::ZERO).unwrap();
+            orchard::keys::FullViewingKey::from(&sk)
+        }
+
+        #[test]
+        fn sapling_viewing_keys_from_dfvk() {
+            let dfvk = sapling_dfvk();
+            let keys = SaplingViewingKeys::from_dfvk(&dfvk);
+
+            // Verify we can access the keys (they're constructed correctly)
+            let _ = keys.nk(Scope::External);
+            let _ = keys.nk(Scope::Internal);
+        }
+
+        #[test]
+        fn sapling_nk_returns_correct_scope() {
+            let dfvk = sapling_dfvk();
+            let keys = SaplingViewingKeys::from_dfvk(&dfvk);
+
+            // External and internal should be different
+            let nk_ext = keys.nk(Scope::External);
+            let nk_int = keys.nk(Scope::Internal);
+
+            // They should be the same as deriving directly
+            assert_eq!(nk_ext, &dfvk.to_nk(Scope::External));
+            assert_eq!(nk_int, &dfvk.to_nk(Scope::Internal));
+        }
+
+        #[test]
+        fn orchard_viewing_keys_from_fvk() {
+            let fvk = orchard_fvk();
+            let keys = OrchardViewingKeys::from_fvk(&fvk);
+
+            // Verify the FVK is stored
+            assert_eq!(keys.fvk, fvk);
+        }
+
+        #[test]
+        fn decrypt_with_sapling_keys_empty_block() {
+            let dfvk = sapling_dfvk();
+            let sapling_keys = SaplingViewingKeys::from_dfvk(&dfvk);
+
+            let block = CompactBlock {
+                height: 1000,
+                vtx: vec![],
+                ..Default::default()
+            };
+
+            let keys = ViewingKeys {
+                sapling: Some(sapling_keys),
+                orchard: None,
+            };
+
+            let result = decrypt_compact_block(&MainNetwork, &block, &keys).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn decrypt_with_orchard_keys_empty_block() {
+            let fvk = orchard_fvk();
+            let orchard_keys = OrchardViewingKeys::from_fvk(&fvk);
+
+            let block = CompactBlock {
+                height: 1000,
+                vtx: vec![],
+                ..Default::default()
+            };
+
+            let keys = ViewingKeys {
+                sapling: None,
+                orchard: Some(orchard_keys),
+            };
+
+            let result = decrypt_compact_block(&MainNetwork, &block, &keys).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn decrypt_with_both_keys_empty_block() {
+            let dfvk = sapling_dfvk();
+            let sapling_keys = SaplingViewingKeys::from_dfvk(&dfvk);
+
+            let fvk = orchard_fvk();
+            let orchard_keys = OrchardViewingKeys::from_fvk(&fvk);
+
+            let block = CompactBlock {
+                height: 1000,
+                vtx: vec![],
+                ..Default::default()
+            };
+
+            let keys = ViewingKeys {
+                sapling: Some(sapling_keys),
+                orchard: Some(orchard_keys),
+            };
+
+            let result = decrypt_compact_block(&MainNetwork, &block, &keys).unwrap();
+            assert!(result.is_empty());
         }
     }
 }

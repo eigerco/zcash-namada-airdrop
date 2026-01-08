@@ -9,14 +9,17 @@ use std::str::FromStr as _;
 use eyre::Context;
 use futures::{Stream, StreamExt as _};
 use http::Uri;
+use non_membership_proofs::Nullifier;
 use non_membership_proofs::chain_nullifiers::{ChainNullifiers as _, PoolNullifier};
 #[cfg(feature = "file-source")]
 use non_membership_proofs::source::file::FileSource;
 use non_membership_proofs::source::light_walletd::LightWalletd;
+use tokio::fs::File;
+use tokio::io::BufReader;
 use tracing::{debug, instrument};
 
-use crate::CommonArgs;
 use crate::cli::Source;
+use crate::{BUF_SIZE, CommonArgs};
 
 /// Stream of nullifiers with unified error type
 type NullifierStream = Pin<Box<dyn Stream<Item = eyre::Result<PoolNullifier>> + Send>>;
@@ -51,13 +54,16 @@ pub async fn get_nullifiers(config: &CommonArgs) -> eyre::Result<NullifierStream
 }
 
 /// Load nullifiers from a file
-#[instrument(fields(path = ?path.as_ref()))]
-pub async fn load_nullifiers_from_file(path: impl AsRef<Path>) -> eyre::Result<Vec<[u8; 32]>> {
+#[instrument(fields(path))]
+pub async fn load_nullifiers_from_file(path: &Path) -> eyre::Result<Vec<Nullifier>> {
     debug!("Loading nullifiers from file");
 
-    let mut nullifiers = non_membership_proofs::read_raw_nullifiers(&path)
+    let file = File::open(path).await?;
+    let reader = BufReader::with_capacity(BUF_SIZE, file);
+
+    let mut nullifiers = non_membership_proofs::read_nullifiers(reader)
         .await
-        .context(format!("Failed to read {:?}", path.as_ref()))?;
+        .context(format!("Failed to read {}", path.display()))?;
     if !nullifiers.is_sorted() {
         nullifiers.sort_unstable();
     }

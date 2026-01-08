@@ -1,6 +1,7 @@
 //! Airdrop CLI Application
 
 use clap::Parser as _;
+use non_membership_proofs::user_nullifiers::{OrchardViewingKeys, SaplingViewingKeys, ViewingKeys};
 use zcash_keys::keys::UnifiedFullViewingKey;
 
 use crate::cli::{Cli, Commands, CommonArgs};
@@ -11,6 +12,8 @@ mod chain_nullifiers;
 mod cli;
 mod commands;
 mod proof;
+
+pub(crate) const BUF_SIZE: usize = 1024 * 1024;
 
 /// Check if a slice is sorted and does not contains duplicates
 #[allow(
@@ -59,11 +62,6 @@ async fn main() -> eyre::Result<()> {
         .expect("Failed to install rustls crypto provider");
 
     // Load .env file (fails silently if not found)
-    #[allow(
-        clippy::let_underscore_must_use,
-        clippy::let_underscore_untyped,
-        reason = "Ignoring dotenv result intentionally"
-    )]
     let _ = dotenvy::dotenv();
 
     init_tracing();
@@ -105,19 +103,23 @@ async fn main() -> eyre::Result<()> {
                 eyre::eyre!("Unified Full Viewing Key does not contain a Sapling FVK")
             })?;
 
+            let viewing_keys = ViewingKeys {
+                sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),
+                orchard: Some(OrchardViewingKeys::from_fvk(orchard_fvk)),
+            };
+
             airdrop_claim(
                 config,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                orchard_fvk,
-                sapling_fvk,
+                viewing_keys,
                 birthday_height,
                 airdrop_claims_output_file,
                 airdrop_configuration_file,
             )
             .await
         }
-        Commands::AirdropConfigurationSchema => airdrop_configuration_schema().await,
+        Commands::AirdropConfigurationSchema => airdrop_configuration_schema(),
     };
 
     if let Err(e) = res {
@@ -126,4 +128,26 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use test_utils::nf;
+
+    use super::*;
+
+    #[test]
+    fn test_is_sanitize_nullifiers() {
+        let nf1 = nf!(0);
+        let nf2 = nf!(1);
+        let nf3 = nf!(2);
+
+        assert!(is_sanitize(&[nf1, nf2, nf3]));
+
+        // Nullifiers are unsorted
+        assert!(!is_sanitize(&[nf2, nf1, nf3]));
+
+        // Nullifiers contain duplicates
+        assert!(!is_sanitize(&[nf1, nf1, nf2]));
+    }
 }

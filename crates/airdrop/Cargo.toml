@@ -2,7 +2,7 @@
 name = "airdrop"
 version = "0.1.0"
 edition.workspace = true
-license = "MIT"
+license.workspace = true
 
 [features]
 default = []
@@ -19,10 +19,8 @@ futures = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
 non-membership-proofs = { workspace = true }
-orchard = { workspace = true }
 rs_merkle = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
-sapling = { workspace = true }
 schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -38,6 +36,10 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
 zcash_protocol = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+test-utils = { workspace = true }
 
 [lints]
 workspace = true

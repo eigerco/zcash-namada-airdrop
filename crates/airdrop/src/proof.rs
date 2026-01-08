@@ -45,11 +45,11 @@ impl std::fmt::Debug for NullifierProof {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let left = self
             .left_nullifier
-            .reverse_into_array()
+            .reverse_bytes()
             .map_or_else(|| "<invalid>".to_owned(), hex::encode::<Nullifier>);
         let right = self
             .right_nullifier
-            .reverse_into_array()
+            .reverse_bytes()
             .map_or_else(|| "<invalid>".to_owned(), hex::encode::<Nullifier>);
         f.debug_struct("NullifierProof")
             .field("left_nullifier", &left)
@@ -190,7 +190,7 @@ fn generate_non_membership_proof_for_nullifier<H: Hasher>(
 
     let nullifier_hex = hex::encode::<Nullifier>(
         nullifier
-            .reverse_into_array()
+            .reverse_bytes()
             .context("Failed to reverse nullifier bytes order")?,
     );
 
@@ -223,12 +223,12 @@ fn generate_non_membership_proof_for_nullifier<H: Hasher>(
         leaf_idx = leaf_idx,
         left_nullifier = %hex::encode::<Nullifier>(
             left_nf
-                .reverse_into_array()
+                .reverse_bytes()
                 .context("Failed to reverse left nullifier bytes order")?
         ),
         right_nullifier = %hex::encode::<Nullifier>(
             right_nf
-                .reverse_into_array()
+                .reverse_bytes()
                 .context("Failed to reverse right nullifier bytes order")?
         ),
         "Found bounding nullifiers"
@@ -268,29 +268,9 @@ mod tests {
 
     use non_membership_proofs::build_merkle_tree;
     use rs_merkle::algorithms::Sha256;
+    use test_utils::{MAX_NF, MIN_NF, nf, nfs};
 
     use super::*;
-
-    const MIN_NF: Nullifier = [0_u8; 32];
-    const MAX_NF: Nullifier = [0xFF_u8; 32];
-
-    /// Helper macro to create a nullifier with a specific last byte.
-    macro_rules! nf {
-        ($v:expr) => {{
-            let mut arr = [0_u8; 32];
-            arr[31] = $v;
-            arr
-        }};
-    }
-
-    /// Helper macro to create a sorted vector of nullifiers.
-    macro_rules! nfs {
-        ($($v:expr),* $(,)?) => {{
-            let mut v = vec![$( nf!($v) ),*];
-            v.sort();
-            v
-        }};
-    }
 
     #[test]
     fn min_max_boundaries() {
@@ -351,10 +331,7 @@ mod tests {
         let result =
             generate_non_membership_proof_for_nullifier(nf!(30), &nullifiers, &tree).unwrap();
 
-        assert!(
-            result.is_none(),
-            "Expected None. Nullifier was found in snapshot."
-        );
+        assert!(result.is_none());
     }
 
     #[test]
@@ -364,10 +341,7 @@ mod tests {
 
         let result = generate_non_membership_proof_for_nullifier(nf!(10), &nullifiers, &tree);
 
-        assert!(
-            matches!(result, Err(e) if e.to_string() == "Snapshot nullifiers cannot be empty"),
-            "Expected error for empty nullifiers"
-        );
+        assert!(matches!(result, Err(e) if e.to_string() == "Snapshot nullifiers cannot be empty"));
     }
 
     #[test]
@@ -404,15 +378,12 @@ mod tests {
             let merkle_proof =
                 rs_merkle::MerkleProof::<Sha256>::from_bytes(&proof.merkle_proof).unwrap();
 
-            assert!(
-                merkle_proof.verify(
-                    tree.root().unwrap(),
-                    &[leaf_idx],
-                    &[leaf_hash],
-                    tree.leaves_len()
-                ),
-                "Merkle proof should be valid"
-            );
+            assert!(merkle_proof.verify(
+                tree.root().unwrap(),
+                &[leaf_idx],
+                &[leaf_hash],
+                tree.leaves_len()
+            ));
         }
     }
 

@@ -2,17 +2,17 @@
 name = "non-membership-proofs"
 version = "0.1.0"
 edition.workspace = true
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 async-stream = { workspace = true }
+blake2s_simd = { workspace = true }
 bytemuck = { workspace = true }
-futures = { workspace = true }
-futures-core = { workspace = true }
+futures = { workspace = true, features = ["compat"] }
 hex = { workspace = true }
 http = { workspace = true }
 orchard = { workspace = true }
-rayon = "1"
+rayon = { workspace = true }
 rs_merkle = { workspace = true }
 sapling = { workspace = true }
 thiserror = { workspace = true }
@@ -26,11 +26,18 @@ tonic = { workspace = true, features = ["tls-native-roots"] }
 tracing = { workspace = true }
 zcash_client_backend = { workspace = true, features = [
   "lightwalletd-tonic-tls-webpki-roots",
+  "orchard",
 ] }
 zcash_note_encryption = { workspace = true }
 zcash_primitives = { workspace = true }
 zcash_protocol = { workspace = true }
 zip32 = "0.2"
+
+[dev-dependencies]
+rand = { workspace = true }
+tempfile = { workspace = true }
+test-utils = { workspace = true }
+tokio-util = { workspace = true, features = ["compat"] }
 
 [lints]
 workspace = true
