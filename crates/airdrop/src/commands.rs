@@ -13,9 +13,7 @@ use eyre::{ContextCompat as _, ensure};
 use futures::StreamExt as _;
 use http::Uri;
 use non_membership_proofs::source::light_walletd::LightWalletd;
-use non_membership_proofs::user_nullifiers::{
-    OrchardViewingKeys, SaplingViewingKeys, UserNullifiers as _, ViewingKeys,
-};
+use non_membership_proofs::user_nullifiers::{AnyFoundNote, UserNullifiers as _, ViewingKeys};
 use non_membership_proofs::utils::ReverseBytes as _;
 use non_membership_proofs::{
     Nullifier, Pool, build_merkle_tree, partition_by_pool, write_nullifiers,
@@ -116,17 +114,11 @@ where
 #[instrument(skip_all, fields(
     snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end()),
 ))]
-#[allow(
-    clippy::too_many_lines,
-    clippy::too_many_arguments,
-    reason = "Complex but coherent airdrop claim logic"
-)]
 pub async fn airdrop_claim(
     config: CommonArgs,
     sapling_snapshot_nullifiers: Option<PathBuf>,
     orchard_snapshot_nullifiers: Option<PathBuf>,
-    orchard_fvk: &orchard::keys::FullViewingKey,
-    sapling_fvk: &sapling::zip32::DiversifiableFullViewingKey,
+    viewing_keys: ViewingKeys,
     birthday_height: u64,
     airdrop_claims_output_file: PathBuf,
     airdrop_configuration_file: Option<PathBuf>,
@@ -146,12 +138,7 @@ pub async fn airdrop_claim(
         warn!("Airdrop configuration file is not provided. Merkle roots cannot be verified");
     }
 
-    let lightwalletd_url = config
-        .source
-        .lightwalletd_url
-        .as_deref()
-        .map(Uri::from_str)
-        .context("lightwalletd URL is required")??;
+    let found_notes = find_user_notes(config, &viewing_keys, birthday_height).await?;
 
     let sapling = airdrop_claim_merkle_tree("sapling", sapling_snapshot_nullifiers);
     let orchard = airdrop_claim_merkle_tree("orchard", orchard_snapshot_nullifiers);
@@ -168,92 +155,8 @@ pub async fn airdrop_claim(
         )?;
     }
 
-    // Connect to lightwalletd
-    let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
-
-    let viewing_keys = ViewingKeys {
-        sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),
-        orchard: Some(OrchardViewingKeys::from_fvk(orchard_fvk)),
-    };
-
-    let scan_range = RangeInclusive::new(
-        (*config.snapshot.start()).max(birthday_height),
-        *config.snapshot.end(),
-    );
-
-    // Scan for notes
-    info!("Scanning for user notes");
-    let mut stream = match config.network {
-        Network::TestNetwork => Box::pin(lightwalletd.user_nullifiers::<TestNetwork>(
-            &TestNetwork,
-            scan_range,
-            orchard_fvk,
-            sapling_fvk,
-        )),
-        Network::MainNetwork => Box::pin(lightwalletd.user_nullifiers::<MainNetwork>(
-            &MainNetwork,
-            scan_range,
-            orchard_fvk,
-            sapling_fvk,
-        )),
-    };
-
-    let mut found_notes = vec![];
-
-    while let Some(found_note) = stream.next().await {
-        let found_note = found_note?;
-
-        let Some(nullifier) = found_note.nullifier(&viewing_keys) else {
-            debug!(
-                height = found_note.height(),
-                "Skipping note: no viewing key"
-            );
-            continue;
-        };
-
-        info!(
-            pool = ?found_note.pool(),
-            height = found_note.height(),
-            nullifier = %hex::encode::<Nullifier>(nullifier.reverse_bytes().unwrap_or_default()),
-            scope = ?found_note.scope(),
-            "Found note"
-        );
-
-        found_notes.push(found_note);
-    }
-
-    let (sapling_count, orchard_count) = found_notes
-        .iter()
-        .try_fold::<_, _, eyre::Result<_, eyre::Report>>(
-            (0_usize, 0_usize),
-            |(s_count, o_count), n| match n.pool() {
-                Pool::Sapling => Ok((
-                    s_count
-                        .checked_add(1_usize)
-                        .context("Sapling note count overflow")?,
-                    o_count,
-                )),
-                Pool::Orchard => Ok((
-                    s_count,
-                    o_count
-                        .checked_add(1_usize)
-                        .context("Orchard note count overflow")?,
-                )),
-            },
-        )?;
-
-    info!(
-        total = found_notes.len(),
-        sapling = sapling_count,
-        orchard = orchard_count,
-        "Scan complete"
-    );
-
     // Generate proofs
-    info!(
-        count = found_notes.len(),
-        "Generating non-membership proofs"
-    );
+    info!("Generating non-membership proofs");
 
     let proofs = found_notes
         .iter()
@@ -302,6 +205,74 @@ pub async fn airdrop_claim(
     );
 
     Ok(())
+}
+
+async fn find_user_notes(
+    config: CommonArgs,
+    viewing_keys: &ViewingKeys,
+    birthday_height: u64,
+) -> eyre::Result<Vec<AnyFoundNote>> {
+    ensure!(
+        birthday_height <= *config.snapshot.end(),
+        "Birthday height cannot be greater than the snapshot end height"
+    );
+    let lightwalletd_url = config
+        .source
+        .lightwalletd_url
+        .as_deref()
+        .map(Uri::from_str)
+        .context("lightwalletd URL is required")??;
+
+    // Connect to lightwalletd
+    let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
+
+    let scan_range = RangeInclusive::new(
+        (*config.snapshot.start()).max(birthday_height),
+        *config.snapshot.end(),
+    );
+
+    // Scan for notes
+    info!("Scanning for user notes");
+    let mut stream = match config.network {
+        Network::TestNetwork => Box::pin(lightwalletd.user_nullifiers::<TestNetwork>(
+            &TestNetwork,
+            scan_range,
+            viewing_keys.clone(),
+        )),
+        Network::MainNetwork => Box::pin(lightwalletd.user_nullifiers::<MainNetwork>(
+            &MainNetwork,
+            scan_range,
+            viewing_keys.clone(),
+        )),
+    };
+
+    let mut found_notes = vec![];
+
+    while let Some(found_note) = stream.next().await {
+        let found_note = found_note?;
+
+        let Some(nullifier) = found_note.nullifier(viewing_keys) else {
+            debug!(
+                height = found_note.height(),
+                "Skipping note: no viewing key"
+            );
+            continue;
+        };
+
+        info!(
+            pool = ?found_note.pool(),
+            height = found_note.height(),
+            nullifier = %hex::encode::<Nullifier>(nullifier.reverse_bytes().unwrap_or_default()),
+            scope = ?found_note.scope(),
+            "Found note"
+        );
+
+        found_notes.push(found_note);
+    }
+
+    info!(total = found_notes.len(), "Scan complete");
+
+    Ok(found_notes)
 }
 
 #[instrument]

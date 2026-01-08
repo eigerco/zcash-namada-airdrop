@@ -19,10 +19,8 @@ futures = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
 non-membership-proofs = { workspace = true }
-orchard = { workspace = true }
 rs_merkle = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
-sapling = { workspace = true }
 schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

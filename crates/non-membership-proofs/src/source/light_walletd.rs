@@ -10,8 +10,6 @@ use std::time::Duration;
 use async_stream::try_stream;
 pub use config::LightWalletdConfig;
 use futures::{Stream, StreamExt as _};
-use orchard::keys::FullViewingKey as OrchardFvk;
-use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::{Channel, ClientTlsConfig, Uri};
 use tracing::warn;
 use zcash_client_backend::proto::compact_formats::CompactBlock;
@@ -29,8 +27,8 @@ use crate::source::light_walletd::utils::sapling_positions::{
 };
 use crate::user_nullifiers::decrypt_notes::{DecryptedNote, decrypt_compact_block};
 use crate::user_nullifiers::{
-    AnyFoundNote, BoxedNoteStream, FoundNote, NoteMetadata, OrchardViewingKeys, SaplingNote,
-    SaplingViewingKeys, UserNullifiers, ViewingKeys,
+    AnyFoundNote, BoxedNoteStream, FoundNote, NoteMetadata, SaplingNote, UserNullifiers,
+    ViewingKeys,
 };
 use crate::{Nullifier, Pool};
 
@@ -254,20 +252,11 @@ impl UserNullifiers for LightWalletd {
         &self,
         network: &P,
         range: RangeInclusive<u64>,
-        orchard_fvk: &OrchardFvk,
-        sapling_fvk: &DiversifiableFullViewingKey,
+        keys: ViewingKeys,
     ) -> Self::Stream {
         let network = network.clone();
         let config = self.config.clone();
         let client = self.client.clone();
-
-        let sapling_viewing_keys = SaplingViewingKeys::from_dfvk(sapling_fvk);
-        let orchard_viewing_keys = OrchardViewingKeys::from_fvk(orchard_fvk);
-
-        let keys = ViewingKeys {
-            sapling: Some(sapling_viewing_keys),
-            orchard: Some(orchard_viewing_keys),
-        };
 
         Box::pin(try_stream! {
             let mut stream = Self::get_block_range_stream(

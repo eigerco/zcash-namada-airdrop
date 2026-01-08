@@ -1,6 +1,7 @@
 //! Airdrop CLI Application
 
 use clap::Parser as _;
+use non_membership_proofs::user_nullifiers::{OrchardViewingKeys, SaplingViewingKeys, ViewingKeys};
 use zcash_keys::keys::UnifiedFullViewingKey;
 
 use crate::cli::{Cli, Commands, CommonArgs};
@@ -102,12 +103,16 @@ async fn main() -> eyre::Result<()> {
                 eyre::eyre!("Unified Full Viewing Key does not contain a Sapling FVK")
             })?;
 
+            let viewing_keys = ViewingKeys {
+                sapling: Some(SaplingViewingKeys::from_dfvk(sapling_fvk)),
+                orchard: Some(OrchardViewingKeys::from_fvk(orchard_fvk)),
+            };
+
             airdrop_claim(
                 config,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                orchard_fvk,
-                sapling_fvk,
+                viewing_keys,
                 birthday_height,
                 airdrop_claims_output_file,
                 airdrop_configuration_file,

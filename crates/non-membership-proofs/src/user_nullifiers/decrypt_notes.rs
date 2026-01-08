@@ -62,6 +62,7 @@ pub struct DecryptedOrchardNote {
 /// Viewing keys for decryption and nullifier derivation
 ///
 /// Provide both external (for receiving) and internal (for change) keys
+#[derive(Clone)]
 pub struct SaplingViewingKeys {
     /// External viewing key for external scope (needed for note decryption)
     /// External scope is used for incoming payments.
@@ -81,6 +82,7 @@ pub struct SaplingViewingKeys {
 }
 
 /// Viewing keys for decryption and nullifier derivation for Orchard pool
+#[derive(Clone)]
 pub struct OrchardViewingKeys {
     /// External viewing key for external scope (needed for note decryption)
     pub external: OrchardPivk,
@@ -91,6 +93,7 @@ pub struct OrchardViewingKeys {
 }
 
 /// Viewing keys for both Sapling and Orchard pools
+#[derive(Clone)]
 pub struct ViewingKeys {
     /// Sapling viewing keys (if any)
     pub sapling: Option<SaplingViewingKeys>,
