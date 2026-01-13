@@ -1,0 +1,37 @@
+name: Setup Rust Build
+description: Install protoc, setup patched deps, install Rust toolchain, and configure cache
+
+inputs:
+  toolchain:
+    description: Rust toolchain to install (e.g., nightly, stable, 1.88.0)
+    required: true
+  components:
+    description: Additional Rust components to install (e.g., clippy, rustfmt)
+    required: false
+    default: ""
+  shared-key:
+    description: Shared key for Rust cache
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install protoc
+      uses: ./.github/actions/setup-protoc
+    - name: Setup patched dependencies
+      uses: ./.github/actions/setup-patched-deps
+    - name: Install toolchain
+      uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # branch=master
+      id: toolchain
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+    - name: Set toolchain override
+      shell: bash
+      run: rustup override set "${TOOLCHAIN}"
+      env:
+        TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag: v2.8.2
+      with:
+        shared-key: ${{ inputs.shared-key }}
