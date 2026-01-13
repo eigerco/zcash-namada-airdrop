@@ -50,8 +50,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
-        with:
-          submodules: recursive
       - name: Setup Rust build environment
         uses: ./.github/actions/setup-rust-build
         with:
@@ -79,8 +77,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
-        with:
-          submodules: recursive
       - name: Setup Rust build environment
         uses: ./.github/actions/setup-rust-build
         with:
@@ -95,8 +91,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
-        with:
-          submodules: recursive
       - name: Setup Rust build environment
         uses: ./.github/actions/setup-rust-build
         with:
@@ -111,8 +105,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
-        with:
-          submodules: recursive
       - name: Setup patched dependencies
         uses: ./.github/actions/setup-patched-deps
       - name: Check licenses

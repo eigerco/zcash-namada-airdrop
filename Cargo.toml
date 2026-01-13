@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/light-wallet-api",
   "crates/mnemonic-to-fvks",
   "crates/non-membership-proofs",
   "crates/airdrop",
@@ -14,7 +13,6 @@ repository = "https://github.com/eigerco/zcash-namada-airdrop"
 license = "MIT"
 
 [workspace.dependencies]
-light-wallet-api = { path = "crates/light-wallet-api" }
 mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
 non-membership-proofs = { path = "crates/non-membership-proofs" }
 
@@ -52,6 +50,7 @@ tonic-prost = "0.14.2"
 tonic-prost-build = "0.14.2"
 tracing = "0.1.43"
 tracing-subscriber = "0.3.22"
+zcash_client_backend = "0.21.0"
 zcash_keys = "0.12.0"
 zcash_note_encryption = "0.4.1"
 zcash_primitives = "0.26.3"

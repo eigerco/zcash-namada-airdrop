@@ -62,10 +62,6 @@ The workspace also uses `pre-commit` checks. These can be removed if they prove 
 
 - **Description**: A utility to convert a Zcash mnemonic to Full Viewing Keys. Outputs the Unified Full Viewing Key in human-readable Bech32 format (e.g., `uview1...`), as well as the individual Orchard and Sapling keys in hex format. Run with `--help` to check the usage.
 
-### light-wallet-api
-
-- **Description**: Rust bindings for the Zcash lightwalletd gRPC API. This crate compiles the protobuf definitions from the lightwalletd protocol and exposes them as Rust types for interacting with lightwalletd servers.
-
 ### non-membership-proofs
 
 - **Description**: Core library for generating non-membership proofs for Zcash nullifiers. Provides functionality for:

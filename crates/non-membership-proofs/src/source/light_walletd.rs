@@ -6,12 +6,12 @@ use std::time::Duration;
 
 use async_stream::try_stream;
 use futures_core::Stream;
-use light_wallet_api::compact_tx_streamer_client::CompactTxStreamerClient;
-use light_wallet_api::{BlockId, BlockRange, PoolType};
 use orchard::keys::FullViewingKey as OrchardFvk;
 use sapling::zip32::DiversifiableFullViewingKey;
 use tonic::transport::{Channel, ClientTlsConfig, Uri};
 use tracing::{debug, warn};
+use zcash_client_backend::proto::service::compact_tx_streamer_client::CompactTxStreamerClient;
+use zcash_client_backend::proto::service::{BlockId, BlockRange};
 use zcash_protocol::TxId;
 use zcash_protocol::consensus::Parameters;
 
@@ -221,7 +221,6 @@ impl ChainNullifiers for LightWalletd {
                         height: *range.end(),
                         hash: vec![],
                     }),
-                    pool_types: vec![],
                 };
                 async move { client.get_block_range(request).await.map(tonic::Response::into_inner) }
             }).await?;
@@ -279,7 +278,6 @@ impl UserNullifiers for LightWalletd {
         end_height: u64,
         orchard_fvk: &OrchardFvk,
         sapling_fvk: &DiversifiableFullViewingKey,
-        pools: Vec<PoolType>,
     ) -> Self::Stream {
         let network = network.clone();
         let client = self.client.clone();
@@ -304,12 +302,6 @@ impl UserNullifiers for LightWalletd {
                         height: end_height,
                         hash: vec![],
                     }),
-                    pool_types: pools.iter().map(
-                            #[allow(clippy::as_conversions, reason = "PoolType is an enum with i32 representation.")]
-                            |p| {
-                                *p as i32
-                            }
-                        ).collect(),
                 };
                 async move { client.get_block_range(request).await.map(tonic::Response::into_inner) }
             }).await?;
@@ -375,7 +367,7 @@ impl UserNullifiers for LightWalletd {
                             // Txid does not affect note decryption or nullifier calculation
                             let txid = block.vtx.get(sapling_note.tx_index).map_or_else(
                                 || TxId::NULL,
-                                |tx| TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL),
+                                |tx| tx.txid(),
                             );
 
                             yield AnyFoundNote::Sapling(FoundNote::<SaplingNote> {
@@ -394,10 +386,10 @@ impl UserNullifiers for LightWalletd {
                         DecryptedNote::Orchard(orchard_note) => {
                             // Failed silently if txid is not valid
                             // Txid does not affect note decryption or nullifier calculation
-                            let txid = block.vtx.get(orchard_note.tx_index)
-                                .map_or_else(|| TxId::NULL, |tx| {
-                                    TxId::read(tx.txid.as_slice()).unwrap_or(TxId::NULL)
-                                });
+                            let txid = block.vtx.get(orchard_note.tx_index).map_or_else(
+                                || TxId::NULL,
+                                |tx| tx.txid()
+                            );
 
                             yield AnyFoundNote::Orchard(FoundNote::<orchard::Note> {
                                 note: orchard_note.note,

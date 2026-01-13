@@ -5,7 +5,6 @@
 
 use std::num::TryFromIntError;
 
-use light_wallet_api::{CompactBlock, CompactOrchardAction, CompactSaplingOutput, CompactTx};
 use orchard::keys::{FullViewingKey as OrchardFvk, PreparedIncomingViewingKey as OrchardPivk};
 use orchard::note::{Note as OrchardNote, Nullifier as OrchardNullifier};
 use orchard::note_encryption::{CompactAction, OrchardDomain};
@@ -15,6 +14,9 @@ use sapling::note_encryption::{
     Zip212Enforcement,
 };
 use sapling::zip32::DiversifiableFullViewingKey as SaplingDfvk;
+use zcash_client_backend::proto::compact_formats::{
+    CompactBlock, CompactOrchardAction, CompactSaplingOutput, CompactTx,
+};
 use zcash_note_encryption::{EphemeralKeyBytes, batch};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_protocol::consensus::{BlockHeight, Parameters};
