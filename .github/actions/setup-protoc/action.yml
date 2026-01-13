@@ -1,0 +1,9 @@
+name: Setup Protoc
+description: Install the Protocol Buffers compiler
+
+runs:
+  using: composite
+  steps:
+    - name: Install protoc
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler

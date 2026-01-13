@@ -9,7 +9,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.91.1"
+rust-version = "1.88.0"
 repository = "https://github.com/eigerco/zcash-namada-airdrop"
 license = "MIT"
 
@@ -73,3 +73,6 @@ unused_qualifications = "warn"
 arithmetic_side_effects = "deny"
 indexing_slicing = "deny"
 unwrap_used = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
