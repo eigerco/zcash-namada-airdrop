@@ -2,27 +2,30 @@
 
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use clap::Parser;
 use eyre::{Result, ensure, eyre};
 use zcash_protocol::consensus::Network;
 
+use crate::commands::{HidingFactor, OrchardHidingFactor, SaplingHidingFactor};
+
+/// Command-line interface definition
 #[derive(Debug, Parser)]
 #[command(name = "airdrop")]
 #[command(about = "Zcash airdrop tool for building snapshots and finding notes")]
 pub struct Cli {
+    /// Cli subcommands
     #[command(subcommand)]
     pub command: Commands,
 }
 
+/// Cli subcommands
 #[derive(Debug, clap::Subcommand)]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "CLI commands are only parsed once"
-)]
 pub enum Commands {
     /// Build a snapshot of nullifiers from a source
     BuildAirdropConfiguration {
+        /// Common configuration arguments
         #[command(flatten)]
         config: CommonArgs,
         /// Configuration output file
@@ -46,6 +49,9 @@ pub enum Commands {
             default_value = "orchard-snapshot-nullifiers.bin"
         )]
         orchard_snapshot_nullifiers: PathBuf,
+        /// Hiding factor arguments for nullifier derivation
+        #[command(flatten)]
+        hiding_factor: HidingFactorArgs,
     },
     /// Prepare the airdrop claim.
     ///
@@ -54,6 +60,7 @@ pub enum Commands {
     /// 3. Output the non-membership proofs
     #[command(verbatim_doc_comment)]
     AirdropClaim {
+        /// Common configuration arguments
         #[command(flatten)]
         config: CommonArgs,
         /// Sapling snapshot nullifiers. This file contains the sapling nullifiers of the snapshot.
@@ -76,13 +83,13 @@ pub enum Commands {
         /// Export the valid airdrop claims to this JSON file
         #[arg(
             long,
-            env = "AIRDROP_CLAIMS_OUTPUT_FILE",
+            env = "AIRDROP_CLAIMS_FILE",
             default_value = "airdrop_claims.json"
         )]
         airdrop_claims_output_file: PathBuf,
         /// Airdrop configuration JSON file
-        #[arg(long, env = "AIRDROP_CONFIGURATION_FILE")]
-        airdrop_configuration_file: Option<PathBuf>,
+        #[arg(long, env = "airdrop_configuration.json")]
+        airdrop_configuration_file: PathBuf,
     },
     /// Prints the schema of the airdrop configuration JSON file
     AirdropConfigurationSchema,
@@ -99,74 +106,45 @@ pub struct CommonArgs {
     #[arg(long, env = "SNAPSHOT", value_parser = parse_range)]
     pub snapshot: RangeInclusive<u64>,
 
-    #[command(flatten)]
-    pub source: SourceArgs,
-}
-
-/// Source of nullifiers for building the snapshot
-#[derive(Debug, Clone, clap::Args)]
-pub struct SourceArgs {
     /// Lightwalletd gRPC endpoint URL
     #[arg(long, env = "LIGHTWALLETD_URL")]
-    pub lightwalletd_url: Option<String>,
-
-    /// File-based nullifier input (only available with `file-source` feature)
-    #[cfg(feature = "file-source")]
-    #[command(flatten)]
-    pub input_files: Option<FileSourceArgs>,
+    pub lightwalletd_url: String,
 }
 
-/// File-based nullifier source arguments (for development/testing).
-/// Only available when compiled with `--features file-source`.
-#[cfg(feature = "file-source")]
+/// Arguments for hiding nullifier derivation
 #[derive(Debug, Clone, clap::Args)]
-pub struct FileSourceArgs {
-    /// Sapling nullifiers input file
-    #[arg(long, env = "SAPLING_INPUT_FILE")]
-    pub sapling_input: Option<String>,
-    /// Orchard nullifiers input file
-    #[arg(long, env = "ORCHARD_INPUT_FILE")]
-    pub orchard_input: Option<String>,
+pub struct HidingFactorArgs {
+    /// Sapling personalization bytes for hiding nullifier
+    #[arg(
+        long,
+        env = "SAPLING_PERSONALIZATION",
+        default_value = "MASP_alt",
+        value_parser = parse_sapling_personalization
+    )]
+    sapling_personalization: Bytes,
+
+    /// Orchard domain separator for hiding nullifier
+    #[arg(long, env = "ORCHARD_HIDING_DOMAIN", default_value = "MASP:Airdrop")]
+    orchard_hiding_domain: String,
+
+    /// Orchard tag bytes for hiding nullifier
+    #[arg(long, env = "ORCHARD_HIDING_TAG", default_value = "K")]
+    orchard_hiding_tag: Bytes,
 }
 
-/// Source of nullifiers for building the snapshot
-#[derive(Debug, Clone)]
-pub enum Source {
-    /// Lightwalletd gRPC source
-    Lightwalletd { url: String },
-    #[cfg(feature = "file-source")]
-    /// File-based source (for development/testing)
-    File {
-        orchard: Option<String>,
-        sapling: Option<String>,
-    },
-}
+impl TryFrom<HidingFactorArgs> for HidingFactor {
+    type Error = eyre::ErrReport;
 
-impl TryFrom<SourceArgs> for Source {
-    type Error = eyre::Report;
-
-    #[cfg(feature = "file-source")]
-    fn try_from(args: SourceArgs) -> Result<Self, Self::Error> {
-        match (args.lightwalletd_url, args.input_files) {
-            (Some(url), None) => Ok(Self::Lightwalletd { url }),
-            (None, Some(files)) => Ok(Self::File {
-                orchard: files.orchard_input,
-                sapling: files.sapling_input,
-            }),
-            (None, None) => Err(eyre!(
-                "No source specified. Provide --lightwalletd-url OR input files (--sapling-input/--orchard-input with file-source feature)."
-            )),
-            (Some(_), Some(_)) => Err(eyre!(
-                "Cannot specify both --lightwalletd-url and input files. Choose one source."
-            )),
-        }
-    }
-
-    #[cfg(not(feature = "file-source"))]
-    fn try_from(args: SourceArgs) -> Result<Self, Self::Error> {
-        args.lightwalletd_url
-            .map(|url| Self::Lightwalletd { url })
-            .ok_or_else(|| eyre!("No source specified. Provide --lightwalletd-url."))
+    fn try_from(args: HidingFactorArgs) -> Result<Self, Self::Error> {
+        Ok(Self {
+            sapling: SaplingHidingFactor {
+                personalization: String::from_utf8(args.sapling_personalization.0)?,
+            },
+            orchard: OrchardHidingFactor {
+                domain: args.orchard_hiding_domain.clone(),
+                tag: String::from_utf8(args.orchard_hiding_tag.0)?,
+            },
+        })
     }
 }
 
@@ -193,5 +171,115 @@ fn parse_network(s: &str) -> Result<Network> {
         other => Err(eyre!(
             "Invalid network: {other}. Expected 'mainnet' or 'testnet'."
         )),
+    }
+}
+
+/// Newtype wrapper for byte arrays parsed from CLI strings.
+/// Clap interprets `Vec<u8>` as multiple u8 values, so we need this wrapper.
+#[derive(Debug, Clone)]
+struct Bytes(pub Vec<u8>);
+
+impl FromStr for Bytes {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self(s.as_bytes().to_vec()))
+    }
+}
+
+fn parse_sapling_personalization(s: &str) -> Result<Bytes> {
+    let bytes = Bytes(s.as_bytes().to_vec());
+    ensure!(
+        bytes.0.len() <= 8,
+        "Sapling personalization must be upto 8 bytes"
+    );
+
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_parse_range() {
+        let range = parse_range("1000000..=1100000");
+        let expected = 1_000_000_u64..=1_100_000_u64;
+        assert!(matches!(range, Ok(r) if r == expected));
+    }
+
+    #[test]
+    fn parse_range_invalid_cases() {
+        let result = parse_range("100-200");
+        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid range format")));
+
+        let result = parse_range("abc..=200");
+        assert!(
+            matches!(result, Err(err) if err.to_string().contains("invalid digit found in string"))
+        );
+
+        let result = parse_range("100..=abc");
+        assert!(
+            matches!(result, Err(err) if err.to_string().contains("invalid digit found in string"))
+        );
+
+        let result = parse_range("200..=100");
+        assert!(
+            matches!(result, Err(err) if err.to_string().contains("Range start must be less than or equal to end"))
+        );
+    }
+
+    #[test]
+    fn network_parse() {
+        let network = parse_network("mainnet").expect("Failed to parse mainnet");
+        assert_eq!(network, Network::MainNetwork);
+
+        let network = parse_network("testnet").expect("Failed to parse testnet");
+        assert_eq!(network, Network::TestNetwork);
+    }
+
+    #[test]
+    fn network_parse_invalid() {
+        let result = parse_network("devnet");
+        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid network")));
+    }
+
+    #[test]
+    fn str_to_bytes() {
+        let input = "MASP_alt";
+        let bytes: Bytes = input.parse().unwrap();
+        assert_eq!(bytes.0, b"MASP_alt".to_vec());
+    }
+
+    // HidingFactorArgs
+    #[test]
+    fn hiding_factor_args_to_hiding_factor() {
+        let args = HidingFactorArgs {
+            sapling_personalization: Bytes(b"MASP_alt".to_vec()),
+            orchard_hiding_domain: "MASP:Airdrop".to_string(),
+            orchard_hiding_tag: Bytes(b"K".to_vec()),
+        };
+
+        let hiding_factor: HidingFactor =
+            args.try_into().expect("Failed to convert to HidingFactor");
+        assert_eq!(
+            hiding_factor.sapling.personalization,
+            String::from_str("MASP_alt").expect("Failed to convert to string")
+        );
+        assert_eq!(hiding_factor.orchard.domain, "MASP:Airdrop".to_string());
+        assert_eq!(
+            hiding_factor.orchard.tag,
+            String::from_str("K").expect("Failed to convert to string")
+        );
+    }
+
+    #[test]
+    fn validate_parse_sapling_personalization() {
+        let res = parse_sapling_personalization("sapling")
+            .expect("Failed to parse sapling personalization");
+        assert_eq!(res.0, b"sapling".to_vec());
+
+        let res = parse_sapling_personalization("sapling_sapling");
+        assert!(res.is_err());
     }
 }

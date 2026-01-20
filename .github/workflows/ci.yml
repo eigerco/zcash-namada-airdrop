@@ -63,7 +63,7 @@ jobs:
         with:
           tool: cargo-hack
       - name: cargo hack
-        run: cargo hack --no-dev-deps --feature-powerset check --locked
+        run: cargo hack --feature-powerset check --locked
       - name: cargo test
         run: cargo test --locked --all-features
       - name: Check Documentation
