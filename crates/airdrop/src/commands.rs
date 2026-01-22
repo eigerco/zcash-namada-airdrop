@@ -7,6 +7,8 @@
 
 mod airdrop_claim;
 mod airdrop_configuration;
+mod note_metadata;
+mod pool_processor;
 
 pub use airdrop_claim::airdrop_claim;
 pub use airdrop_configuration::{

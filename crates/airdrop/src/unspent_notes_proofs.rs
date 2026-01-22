@@ -1,10 +1,8 @@
 //! Helpers for serializing nullifiers non-membership proofs.
 
-use std::collections::HashMap;
-
+use non_membership_proofs::Nullifier;
 use non_membership_proofs::user_nullifiers::Scope;
 use non_membership_proofs::utils::ReversedHex;
-use non_membership_proofs::{Nullifier, Pool};
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
@@ -48,8 +46,10 @@ pub struct UnspentNotesProofs {
     pub non_membership_tree_anchors: NonMembershipTreeAnchors,
     /// The note commitment tree anchors for Orchard and Sapling.
     pub note_commitment_tree_anchors: CommitmentTreeAnchors,
-    /// The map of pool to nullifier proofs.
-    pub pools: HashMap<Pool, Vec<NullifierProof>>,
+    /// Sapling claim inputs
+    pub sapling_claim_input: Vec<ClaimInput<SaplingPrivateInputs>>,
+    /// Orchard claim inputs
+    pub orchard_claim_input: Vec<ClaimInput<OrchardPrivateInputs>>,
 }
 
 impl UnspentNotesProofs {
@@ -59,7 +59,8 @@ impl UnspentNotesProofs {
         sapling_merkle_root: [u8; 32],
         orchard_merkle_root: [u8; 32],
         note_commitment_tree_anchors: CommitmentTreeAnchors,
-        pools: HashMap<Pool, Vec<NullifierProof>>,
+        sapling_claim_input: Vec<ClaimInput<SaplingPrivateInputs>>,
+        orchard_claim_input: Vec<ClaimInput<OrchardPrivateInputs>>,
     ) -> Self {
         Self {
             non_membership_tree_anchors: NonMembershipTreeAnchors {
@@ -67,7 +68,8 @@ impl UnspentNotesProofs {
                 orchard: orchard_merkle_root,
             },
             note_commitment_tree_anchors,
-            pools,
+            sapling_claim_input,
+            orchard_claim_input,
         }
     }
 }
@@ -77,25 +79,18 @@ impl UnspentNotesProofs {
 /// This proof contains the two adjacent nullifiers that bound the target nullifier
 /// (proving it falls in a "gap") along with a Merkle proof that this gap exists
 /// in the committed snapshot.
+///
+/// Generic over the private inputs type `P`, which is pool-specific
+/// (`SaplingPrivateInputs` or `OrchardPrivateInputs`).
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NullifierProof {
+pub struct ClaimInput<P> {
     /// The block height where the note was created.
     pub block_height: u64,
     /// The public inputs for the non-membership proof.
     pub public_inputs: PublicInputs,
     /// The private inputs for the non-membership proof.
-    pub private_inputs: PrivateInputs,
-}
-
-/// Private inputs for the non-membership proof, specific to each pool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "pool")]
-pub enum PrivateInputs {
-    /// Sapling pool private inputs
-    Sapling(SaplingPrivateInputs),
-    /// Orchard pool private inputs
-    Orchard(OrchardPrivateInputs),
+    pub private_inputs: P,
 }
 
 /// Private inputs for a Sapling non-membership proof.
@@ -149,9 +144,6 @@ pub struct SaplingPrivateInputs {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchardPrivateInputs {
-    /// Nullifier being proven as not in the snapshot.
-    #[serde_as(as = "ReversedHex")]
-    pub nullifier: Nullifier,
     /// The commitment of the note that is unspent.
     #[serde_as(as = "Hex")]
     pub note_commitment: [u8; 32],
