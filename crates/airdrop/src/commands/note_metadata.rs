@@ -3,10 +3,19 @@
 //! This module defines the `NoteMetadata` trait and pool-specific metadata types
 //! that enable generic proof generation for both Sapling and Orchard pools.
 
-use non_membership_proofs::{Nullifier, TreePosition};
+use group::GroupEncoding as _;
+use non_membership_proofs::{Nullifier, TreePosition, ViewingKeys};
 use zip32::Scope;
 
-use crate::unspent_notes_proofs::{OrchardPrivateInputs, SaplingPrivateInputs};
+use crate::proof_inputs::{OrchardPrivateInputs, SaplingPrivateInputs};
+
+/// Errors that can occur when building private inputs.
+#[derive(Debug, thiserror::Error)]
+pub enum NoteMetadataError {
+    /// Missing Sapling viewing key
+    #[error("Missing Sapling viewing key")]
+    MissingSaplingKey,
+}
 
 /// Trait for note metadata that can generate claim inputs.
 ///
@@ -23,11 +32,15 @@ pub trait NoteMetadata {
     fn block_height(&self) -> u64;
 
     /// Builds the private inputs for this note type.
+    ///
+    /// # Errors
+    /// Returns an error if required viewing keys are missing.
     fn to_private_inputs(
         &self,
         tree_position: &TreePosition,
         nf_merkle_proof: Vec<[u8; 32]>,
-    ) -> Self::PoolPrivateInputs;
+        viewing_keys: &ViewingKeys,
+    ) -> Result<Self::PoolPrivateInputs, NoteMetadataError>;
 }
 
 /// Metadata for a Sapling note.
@@ -35,8 +48,8 @@ pub trait NoteMetadata {
 pub struct SaplingNoteMetadata {
     /// The hiding nullifier (public input)
     pub hiding_nullifier: Nullifier,
-    /// Diversified generator
-    pub g_d: [u8; 32],
+    /// Diversifier (11 bytes)
+    pub diversifier: [u8; 11],
     /// Diversified transmission key
     pub pk_d: [u8; 32],
     /// Note value in zatoshis
@@ -68,7 +81,8 @@ impl NoteMetadata for SaplingNoteMetadata {
         &self,
         tree_position: &TreePosition,
         nf_merkle_proof: Vec<[u8; 32]>,
-    ) -> Self::PoolPrivateInputs {
+        viewing_key: &ViewingKeys,
+    ) -> Result<Self::PoolPrivateInputs, NoteMetadataError> {
         let cm_merkle_proof: Vec<[u8; 32]> = self
             .cm_merkle_proof
             .path_elems()
@@ -76,11 +90,22 @@ impl NoteMetadata for SaplingNoteMetadata {
             .map(sapling::Node::to_bytes)
             .collect();
 
-        SaplingPrivateInputs {
-            g_d: self.g_d,
+        let sapling_key = viewing_key
+            .sapling()
+            .ok_or(NoteMetadataError::MissingSaplingKey)?;
+
+        // ak is the same for both external and internal scopes
+        let ak = sapling_key.dfvk.fvk().vk.ak.to_bytes();
+        // nk differs between external and internal scopes
+        let nk = sapling_key.nk(self.scope).0.to_bytes();
+
+        Ok(SaplingPrivateInputs {
+            diversifier: self.diversifier,
             pk_d: self.pk_d,
             value: self.value,
             rcm: self.rcm,
+            ak,
+            nk,
             cm_note_position: self.note_position,
             scope: self.scope.into(),
             cm_merkle_proof,
@@ -88,7 +113,7 @@ impl NoteMetadata for SaplingNoteMetadata {
             right_nullifier: tree_position.right_bound,
             nf_leaf_position: tree_position.leaf_position.into(),
             nf_merkle_proof,
-        }
+        })
     }
 }
 
@@ -120,7 +145,8 @@ impl NoteMetadata for OrchardNoteMetadata {
         &self,
         tree_position: &TreePosition,
         nf_merkle_proof: Vec<[u8; 32]>,
-    ) -> Self::PoolPrivateInputs {
+        _viewing_keys: &ViewingKeys,
+    ) -> Result<Self::PoolPrivateInputs, NoteMetadataError> {
         let cm_merkle_proof: Vec<[u8; 32]> = self
             .cm_merkle_proof
             .auth_path()
@@ -128,13 +154,13 @@ impl NoteMetadata for OrchardNoteMetadata {
             .map(orchard::tree::MerkleHashOrchard::to_bytes)
             .collect();
 
-        OrchardPrivateInputs {
+        Ok(OrchardPrivateInputs {
             note_commitment: self.note_commitment,
             cm_merkle_proof,
             left_nullifier: tree_position.left_bound,
             right_nullifier: tree_position.right_bound,
             nf_leaf_position: tree_position.leaf_position.into(),
             nf_merkle_proof,
-        }
+        })
     }
 }

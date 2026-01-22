@@ -44,11 +44,15 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
+ "bellman",
+ "bls12_381",
+ "claim-circuit",
  "clap",
  "console-subscriber",
  "dirs",
  "dotenvy",
  "eyre",
+ "group",
  "hex",
  "http",
  "non-membership-proofs",
@@ -61,6 +65,7 @@ dependencies = [
  "serde_with",
  "tempfile",
  "test-utils",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -531,6 +536,25 @@ dependencies = [
  "crypto-common 0.1.7",
  "inout",
  "zeroize",
+]
+
+[[package]]
+name = "claim-circuit"
+version = "0.1.0"
+dependencies = [
+ "bellman",
+ "bls12_381",
+ "ff",
+ "group",
+ "incrementalmerkletree",
+ "jubjub",
+ "non-membership-proofs",
+ "rand 0.8.5",
+ "rand_core 0.6.4",
+ "rand_xorshift",
+ "sapling-crypto",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1317,6 +1341,9 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hex-conservative"
@@ -2329,6 +2356,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
+]
+
+[[package]]
+name = "rand_xorshift"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
+dependencies = [
+ "rand_core 0.6.4",
 ]
 
 [[package]]

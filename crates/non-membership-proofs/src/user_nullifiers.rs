@@ -92,6 +92,12 @@ pub struct SaplingNote {
 }
 
 impl SaplingNote {
+    /// Returns the diversifier bytes (11 bytes).
+    #[must_use]
+    pub fn diversifier(&self) -> [u8; 11] {
+        self.note.recipient().diversifier().0
+    }
+
     /// Returns the diversified generator bytes (Sapling only).
     ///
     /// # Panics

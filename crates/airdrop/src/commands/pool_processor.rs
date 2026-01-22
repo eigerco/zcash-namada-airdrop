@@ -11,7 +11,7 @@ use non_membership_proofs::{Nullifier, ViewingKeys};
 
 use super::airdrop_configuration::AirdropConfiguration;
 use super::note_metadata::{NoteMetadata, OrchardNoteMetadata, SaplingNoteMetadata};
-use crate::unspent_notes_proofs::{ClaimInput, OrchardPrivateInputs, SaplingPrivateInputs};
+use crate::proof_inputs::{ClaimInput, OrchardPrivateInputs, SaplingPrivateInputs};
 
 /// Result of processing claims for a single pool.
 pub struct PoolClaimResult<P> {
@@ -98,8 +98,8 @@ impl PoolProcessor for SaplingPool {
             notes.insert(
                 nullifier,
                 SaplingNoteMetadata {
+                    diversifier: found_note.note.diversifier(),
                     hiding_nullifier,
-                    g_d: found_note.note.g_d(),
                     pk_d: found_note.note.pk_d(),
                     value: found_note.note.note.value().inner(),
                     rcm: found_note.note.rcm(),

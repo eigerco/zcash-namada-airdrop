@@ -26,7 +26,7 @@ use super::pool_processor::{OrchardPool, SaplingPool};
 use crate::BUF_SIZE;
 use crate::cli::CommonArgs;
 use crate::commands::pool_processor::{PoolClaimResult, PoolProcessor};
-use crate::unspent_notes_proofs::{ClaimInput, PublicInputs, UnspentNotesProofs};
+use crate::proof_inputs::{AirdropClaimInputs, ClaimInput, PublicInputs};
 
 /// Generate airdrop claim
 ///
@@ -81,7 +81,7 @@ pub async fn airdrop_claim(
         .len()
         .checked_add(orchard_result.claims.len());
 
-    let user_proofs = UnspentNotesProofs::new(
+    let user_proofs = AirdropClaimInputs::new(
         sapling_result.anchor,
         orchard_result.anchor,
         airdrop_config.note_commitment_tree_anchors,
@@ -182,14 +182,15 @@ async fn build_pool_merkle_tree(
     Ok(loaded_data)
 }
 
-/// Generate non-membership proofs for notes of any pool type.
+/// Generate airdrop claims for the user's notes.
 ///
 /// This generic function works with any metadata type implementing `NoteMetadata`,
 /// producing claim inputs with the appropriate pool-specific private inputs.
-fn generate_proofs<M: NoteMetadata>(
+fn generate_claims<M: NoteMetadata>(
     tree: &NonMembershipTree,
     user_nullifiers: &[TreePosition],
     note_metadata_map: &HashMap<Nullifier, M>,
+    viewing_keys: &ViewingKeys,
 ) -> Vec<ClaimInput<M::PoolPrivateInputs>> {
     user_nullifiers
         .iter()
@@ -214,7 +215,9 @@ fn generate_proofs<M: NoteMetadata>(
                 public_inputs: PublicInputs {
                     hiding_nullifier: metadata.hiding_nullifier(),
                 },
-                private_inputs: metadata.to_private_inputs(tree_position, nf_merkle_proof),
+                private_inputs: metadata
+                    .to_private_inputs(tree_position, nf_merkle_proof, viewing_keys)
+                    .ok()?,
             })
         })
         .collect()
@@ -253,7 +256,12 @@ async fn process_pool_claims<P: PoolProcessor>(
     );
 
     info!("Generating non-membership proofs");
-    let claims = generate_proofs(&pool_data.tree, &pool_data.user_nullifiers, &notes);
+    let claims = generate_claims(
+        &pool_data.tree,
+        &pool_data.user_nullifiers,
+        &notes,
+        viewing_keys,
+    );
 
     Ok(PoolClaimResult { anchor, claims })
 }

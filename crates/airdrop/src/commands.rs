@@ -7,6 +7,7 @@
 
 mod airdrop_claim;
 mod airdrop_configuration;
+mod generate_claim_proof;
 mod note_metadata;
 mod pool_processor;
 
@@ -14,6 +15,9 @@ pub use airdrop_claim::airdrop_claim;
 pub use airdrop_configuration::{
     AirdropConfiguration, CommitmentTreeAnchors, HidingFactor, NonMembershipTreeAnchors,
     OrchardHidingFactor, SaplingHidingFactor, build_airdrop_configuration,
+};
+pub use generate_claim_proof::{
+    generate_claim_params, generate_claim_proofs, verify_claim_sapling_proof,
 };
 
 /// Generates and prints the JSON schema for the `AirdropConfiguration` struct.

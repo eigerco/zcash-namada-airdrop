@@ -17,7 +17,19 @@ Zcash's shielded pools use nullifiers to track spent notes. When you spend a not
 
 ### The Solution
 
-This toolkit generates **non-membership proofs**—cryptographic proofs that demonstrate your note's nullifier is NOT in the snapshot of spent nullifiers, without revealing the nullifier itself. These proofs use "hiding nullifiers" (a privacy-preserving derivation) and Merkle tree proofs.
+This toolkit combines **non-membership proofs** with a custom **Groth16 ZK circuit**:
+
+**Non-membership proofs** use Merkle trees built from sorted nullifiers. To prove your nullifier isn't in the set, you show it falls in a "gap" between two adjacent nullifiers in the tree, along with a Merkle proof that this gap exists.
+
+The **ZK circuit** then proves three things simultaneously:
+
+1. **Note ownership**: Your note commitment exists in the Zcash commitment tree
+2. **Unspent status**: Your nullifier falls within a valid gap in the non-membership tree (the note wasn't spent)
+3. **Hiding nullifier**: A "hiding nullifier" is correctly derived from your actual nullifier
+
+The **hiding nullifier** is a privacy-preserving transformation of your real nullifier, used on-chain for double-claim prevention. It cannot be reversed to reveal your actual nullifier or link to your Zcash transaction history.
+
+The ZK proof convinces the verifier of all three facts without revealing your actual nullifier, note value, or any other private data.
 
 ## Workflow
 
@@ -136,7 +148,7 @@ This command will:
 1. Verify the snapshot Merkle roots match the airdrop configuration (if provided)
 2. Scan the blockchain for notes belonging to your viewing keys
 3. For each unspent note found, generate a non-membership proof
-4. Output the proofs to `my_claims.json`
+4. Output the proofs to `airdrop_claims.json`
 
 **Parameters of `airdrop-claim` explained:**
 
@@ -154,9 +166,54 @@ This command will:
 
 > **Recommended**: Provide the `--airdrop-configuration-file` from the official airdrop to verify your snapshot files match the expected Merkle roots. This ensures your generated proofs will be valid.
 
-### Step 4: Submit Proofs
+### Step 4: Generate Claim Proofs
 
-The output `my_claims.json` contains non-membership proofs that can be verified against the published Merkle roots—proving ownership of unspent shielded funds without revealing sensitive information.
+The `airdrop-claim` command outputs claim inputs (note data + non-membership proofs). To create the final ZK proofs that can be submitted on-chain, use `generate-claim-proofs`:
+
+```bash
+airdrop generate-claim-proofs \
+  --claim-inputs-file airdrop_claims.json \
+  --proofs-output-file airdrop_claim_proofs.json \
+  --seed <your-64-byte-hex-seed> \
+  --network testnet \
+  --proving-key-file claim_proving_key.params \
+  --verifying-key-file claim_verifying_key.params
+```
+
+This command will:
+
+1. Load the claim inputs from the previous step
+2. Derive Sapling spending keys from your seed
+3. Generate Groth16 ZK proofs for each claim (in parallel)
+4. Verify each proof before including it in the output
+5. Output the proofs to `airdrop_claim_proofs.json`
+
+**Parameters of `generate-claim-proofs` explained:**
+
+| Parameter              | Description                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `--claim-inputs-file`  | Path to claim inputs JSON (output of `airdrop-claim`)                  |
+| `--proofs-output-file` | Output path for generated proofs. Default: `airdrop_claim_proofs.json` |
+| `--seed`               | Your 64-byte wallet seed as hex (128 hex characters)                   |
+| `--network`            | Network to use (`mainnet` or `testnet`). Default: `mainnet`            |
+| `--proving-key-file`   | Path to proving key. Default: `claim_proving_key.params`               |
+| `--verifying-key-file` | Path to verifying key. Default: `claim_verifying_key.params`           |
+
+> **Important**: Download the official proving and verifying keys published by the airdrop organizer. Do not generate your own—proofs made with different keys will be rejected.
+>
+> **Security Note**: The seed is required to derive spending authorization. Keep it secure—it can spend your funds.
+
+### Step 5: Verify Proofs (Optional)
+
+To independently verify generated proofs:
+
+```bash
+airdrop verify-claim-proof \
+  --proofs-file airdrop_claim_proofs.json \
+  --verifying-key-file claim_verifying_key.params
+```
+
+This is a sanity check to ensure the generated proofs are valid before submission.
 
 ## Privacy Properties
 
@@ -168,6 +225,18 @@ The output `my_claims.json` contains non-membership proofs that can be verified 
 | Requires spending or moving your funds           | No         |
 
 ## Utilities
+
+### Generate Claim Circuit Parameters (Organizers Only)
+
+The airdrop organizer must generate and publish the Groth16 proving and verifying keys:
+
+```bash
+airdrop generate-claim-params \
+  --proving-key-file claim_proving_key.params \
+  --verifying-key-file claim_verifying_key.params
+```
+
+> **Important**: Users must download and use the official keys published by the organizer. Regenerating keys locally will produce different keys that won't be accepted by the verifier.
 
 ### View Configuration Schema
 
@@ -185,15 +254,20 @@ Instead of passing arguments on the command line, you can use environment variab
 
 | Variable                      | Description                                              |
 | ----------------------------- | -------------------------------------------------------- |
-| `AIRDROP_CLAIMS_OUTPUT_FILE`  | Path to write the valid airdrop claims to this JSON file |
-| `AIRDROP_CONFIGURATION_FILE`  | Path to airdrop configuration JSON                       |
+| `AIRDROP_CLAIMS_FILE`         | Path to write the valid airdrop claims to this JSON file |
 | `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys            |
+| `CLAIM_INPUTS_FILE`           | Path to claim inputs JSON (for `generate-claim-proofs`)  |
+| `CLAIM_PROOFS_FILE`           | Path to claim proofs JSON (for `verify-claim-proof`)     |
+| `CLAIM_PROOFS_OUTPUT_FILE`    | Output path for generated claim proofs                   |
 | `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON               |
 | `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL                           |
 | `NETWORK`                     | Network to use (`mainnet` or `testnet`)                  |
 | `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                          |
+| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                     |
 | `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                          |
+| `SEED`                        | 64-byte wallet seed as hex (128 hex characters)          |
 | `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)  |
+| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                   |
 
 ## Troubleshooting
 
