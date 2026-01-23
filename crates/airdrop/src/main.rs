@@ -1,28 +1,11 @@
 //! Airdrop CLI Application
 
+use airdrop::cli::{Cli, Commands};
+use airdrop::commands::{airdrop_claim, airdrop_configuration_schema, build_airdrop_configuration};
 use clap::Parser as _;
 use zcash_keys::keys::UnifiedFullViewingKey;
 
-use crate::cli::{Cli, Commands, CommonArgs};
-use crate::commands::{airdrop_claim, airdrop_configuration_schema, build_airdrop_configuration};
-
-mod airdrop_configuration;
-mod chain_nullifiers;
-mod cli;
-mod commands;
-mod proof;
-
-/// Check if a slice is sorted and does not contains duplicates
-#[allow(
-    clippy::indexing_slicing,
-    clippy::missing_asserts_for_indexing,
-    reason = "Windows(2) guarantees 2 elements"
-)]
-pub(crate) fn is_sanitize<T: Ord + Clone>(v: &[T]) -> bool {
-    v.is_sorted() && !v.windows(2).any(|w| w[0] == w[1])
-}
-
-fn init_tracing() {
+fn init_tracing() -> eyre::Result<()> {
     #[cfg(feature = "tokio-console")]
     {
         // tokio-console: layers the console subscriber with fmt
@@ -35,7 +18,8 @@ fn init_tracing() {
                         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
                 ),
             )
-            .init();
+            .try_init()
+            .map_err(|e| eyre::eyre!("Failed to initialize tracing: {:?}", e))?;
     }
 
     #[cfg(not(feature = "tokio-console"))]
@@ -47,8 +31,11 @@ fn init_tracing() {
             )
             .with_timer(tracing_subscriber::fmt::time::uptime())
             .with_target(false)
-            .init();
+            .try_init()
+            .map_err(|e| eyre::eyre!("Failed to initialize tracing: {:?}", e))?;
     }
+
+    Ok(())
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -56,17 +43,12 @@ async fn main() -> eyre::Result<()> {
     // Initialize rustls crypto provider (required for TLS connections)
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Failed to install rustls crypto provider");
+        .map_err(|e| eyre::eyre!("Failed to install rustls crypto provider: {e:?}"))?;
 
     // Load .env file (fails silently if not found)
-    #[allow(
-        clippy::let_underscore_must_use,
-        clippy::let_underscore_untyped,
-        reason = "Ignoring dotenv result intentionally"
-    )]
     let _ = dotenvy::dotenv();
 
-    init_tracing();
+    init_tracing()?;
 
     let cli = Cli::parse();
 
@@ -76,12 +58,14 @@ async fn main() -> eyre::Result<()> {
             configuration_output_file,
             sapling_snapshot_nullifiers,
             orchard_snapshot_nullifiers,
+            hiding_factor,
         } => {
             build_airdrop_configuration(
                 config,
                 configuration_output_file,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
+                hiding_factor.try_into()?,
             )
             .await
         }
@@ -97,27 +81,18 @@ async fn main() -> eyre::Result<()> {
             let ufvk = UnifiedFullViewingKey::decode(&config.network, &unified_full_viewing_key)
                 .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {:?}", e))?;
 
-            let orchard_fvk = ufvk.orchard().ok_or_else(|| {
-                eyre::eyre!("Unified Full Viewing Key does not contain an Orchard FVK")
-            })?;
-
-            let sapling_fvk = ufvk.sapling().ok_or_else(|| {
-                eyre::eyre!("Unified Full Viewing Key does not contain a Sapling FVK")
-            })?;
-
             airdrop_claim(
                 config,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                orchard_fvk,
-                sapling_fvk,
+                ufvk,
                 birthday_height,
                 airdrop_claims_output_file,
                 airdrop_configuration_file,
             )
             .await
         }
-        Commands::AirdropConfigurationSchema => airdrop_configuration_schema().await,
+        Commands::AirdropConfigurationSchema => airdrop_configuration_schema(),
     };
 
     if let Err(e) = res {
