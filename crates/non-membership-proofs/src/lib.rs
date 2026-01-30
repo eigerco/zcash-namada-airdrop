@@ -14,7 +14,7 @@ mod viewing_keys;
 
 // Re-export key merkle types for convenience
 pub use non_membership_tree::{
-    MerklePathError, NonMembershipNode, NonMembershipTree, TreePosition,
+    MerklePathError, NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode, NonMembershipTree, TreePosition,
 };
 // Re-export nullifier types
 pub use nullifier::{NULLIFIER_SIZE, Nullifier, SanitiseNullifiers};

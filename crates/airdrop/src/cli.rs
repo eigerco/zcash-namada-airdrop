@@ -88,11 +88,85 @@ pub enum Commands {
         )]
         airdrop_claims_output_file: PathBuf,
         /// Airdrop configuration JSON file
-        #[arg(long, env = "airdrop_configuration.json")]
+        #[arg(
+            long,
+            env = "AIRDROP_CONFIGURATION_FILE",
+            default_value = "airdrop_configuration.json"
+        )]
         airdrop_configuration_file: PathBuf,
     },
     /// Prints the schema of the airdrop configuration JSON file
     AirdropConfigurationSchema,
+    /// Generate claim proofs using custom claim circuit
+    GenerateClaimProofs {
+        /// Input file containing claim inputs (from `AirdropClaim` command)
+        #[arg(long, env = "AIRDROP_CLAIMS_FILE")]
+        claim_inputs_file: PathBuf,
+
+        /// Output file for generated claim proofs
+        #[arg(
+            long,
+            env = "CLAIM_PROOFS_FILE",
+            default_value = "airdrop_claim_proofs.json"
+        )]
+        proofs_output_file: PathBuf,
+
+        /// 64-byte seed as hex (128 hex characters) for deriving spending keys
+        #[arg(long, env = "SEED")]
+        seed: String,
+
+        /// Network to use (mainnet or testnet)
+        #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
+        network: Network,
+
+        /// Path to proving key file (will be generated if not exists)
+        #[arg(
+            long,
+            env = "PROVING_KEY_FILE",
+            default_value = "claim_proving_key.params"
+        )]
+        proving_key_file: PathBuf,
+
+        /// Path to verifying key file (will be generated if not exists)
+        #[arg(
+            long,
+            env = "VERIFYING_KEY_FILE",
+            default_value = "claim_verifying_key.params"
+        )]
+        verifying_key_file: PathBuf,
+    },
+    /// Generate claim circuit parameters (proving and verifying keys)
+    GenerateClaimParams {
+        /// Output file for proving key
+        #[arg(
+            long,
+            env = "PROVING_KEY_FILE",
+            default_value = "claim_proving_key.params"
+        )]
+        proving_key_file: PathBuf,
+
+        /// Output file for verifying key
+        #[arg(
+            long,
+            env = "VERIFYING_KEY_FILE",
+            default_value = "claim_verifying_key.params"
+        )]
+        verifying_key_file: PathBuf,
+    },
+    /// Verify claim proofs from a proofs file (output of generate-claim-proofs)
+    VerifyClaimProof {
+        /// JSON file containing claim proofs (from generate-claim-proofs command)
+        #[arg(long, env = "CLAIM_PROOFS_FILE")]
+        proofs_file: PathBuf,
+
+        /// Path to the verifying key file
+        #[arg(
+            long,
+            env = "VERIFYING_KEY_FILE",
+            default_value = "claim_verifying_key.params"
+        )]
+        verifying_key_file: PathBuf,
+    },
 }
 
 /// Common arguments for both commands

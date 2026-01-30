@@ -14,5 +14,5 @@
 mod node;
 mod tree;
 
-pub use node::NonMembershipNode;
+pub use node::{NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode};
 pub use tree::{MerklePathError, NonMembershipTree, TreePosition};

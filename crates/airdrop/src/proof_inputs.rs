@@ -2,7 +2,6 @@
 
 use non_membership_proofs::Nullifier;
 use non_membership_proofs::user_nullifiers::Scope;
-use non_membership_proofs::utils::ReversedHex;
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
@@ -41,7 +40,7 @@ impl From<SerializableScope> for Scope {
 /// Unspent notes proofs
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UnspentNotesProofs {
+pub struct AirdropClaimInputs {
     /// The non-membership tree anchors for Orchard and Sapling.
     pub non_membership_tree_anchors: NonMembershipTreeAnchors,
     /// The note commitment tree anchors for Orchard and Sapling.
@@ -52,7 +51,7 @@ pub struct UnspentNotesProofs {
     pub orchard_claim_input: Vec<ClaimInput<OrchardPrivateInputs>>,
 }
 
-impl UnspentNotesProofs {
+impl AirdropClaimInputs {
     /// Create a new `UnspentNotesProofs` from a map of pool proofs.
     #[must_use]
     pub const fn new(
@@ -93,49 +92,59 @@ pub struct ClaimInput<P> {
     pub private_inputs: P,
 }
 
-/// Private inputs for a Sapling non-membership proof.
+/// Private inputs for a Sapling airdrop claim proof.
 ///
-/// Contains note preimage components for commitment recomputation in circuit,
-/// along with non-membership proof data.
+/// Contains:
+/// - Note preimage components for commitment recomputation in circuit
+/// - Key material for nullifier derivation and ivk verification
+/// - Merkle proofs for note commitment inclusion and nullifier non-membership
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaplingPrivateInputs {
     // === Note preimage (for commitment recomputation in circuit) ===
-    /// Diversified generator (from recipient address).
+    /// Diversifier (11 bytes) - used to derive `g_d` and create payment address.
     #[serde_as(as = "Hex")]
-    pub g_d: [u8; 32],
+    pub diversifier: [u8; 11],
     /// Diversified transmission key (from recipient address).
     #[serde_as(as = "Hex")]
     pub pk_d: [u8; 32],
     /// Note value in zatoshis.
     pub value: u64,
-    /// Note commitment randomness.
+    /// Note commitment randomness (rcm).
     #[serde_as(as = "Hex")]
     pub rcm: [u8; 32],
+
+    // === Key material (for nullifier derivation + ivk verification) ===
+    /// The authorization key (ak) - Jubjub point, 32 bytes.
+    /// Used for ivk derivation: ivk = BLAKE2s("Zcashivk", ak || nk)
+    #[serde_as(as = "Hex")]
+    pub ak: [u8; 32],
+    /// The nullifier deriving key (nk) - Jubjub point, 32 bytes.
+    /// Used for: 1) nullifier derivation nf = PRF(nk, position), 2) ivk derivation
+    #[serde_as(as = "Hex")]
+    pub nk: [u8; 32],
 
     // === For nullifier derivation ===
     /// The position of the note in Sapling commitment tree (used for nullifier derivation).
     pub cm_note_position: u64,
     /// The scope of the note (External for received payments, Internal for change).
-    /// Used by the prover to derive the nullifier deriving key (nk) from the viewing key.
+    /// Informational - the actual keys (ak, nk) are already included above.
     pub scope: SerializableScope,
 
     // === For note commitment inclusion proof (proves note exists in Zcash) ===
-    /// The Merkle proof bytes for the note commitment tree.
+    /// The Merkle proof siblings for the note commitment tree.
     /// Proves the note commitment exists in Zcash at the snapshot height.
     #[serde_as(as = "Vec<Hex>")]
     pub cm_merkle_proof: Vec<[u8; 32]>,
 
     // === For non-membership proof (proves nullifier not spent) ===
     /// The lower bound nullifier (the largest nullifier smaller than the target).
-    #[serde_as(as = "ReversedHex")]
     pub left_nullifier: Nullifier,
     /// The upper bound nullifier (the smallest nullifier larger than the target).
-    #[serde_as(as = "ReversedHex")]
     pub right_nullifier: Nullifier,
     /// The position of the leaf in the non-membership Merkle tree.
     pub nf_leaf_position: u64,
-    /// The Merkle proof bytes proving the `(left, right)` range leaf exists in the tree.
+    /// The Merkle proof siblings proving the `(left, right)` range leaf exists in the tree.
     #[serde_as(as = "Vec<Hex>")]
     pub nf_merkle_proof: Vec<[u8; 32]>,
 }
@@ -151,10 +160,8 @@ pub struct OrchardPrivateInputs {
     #[serde_as(as = "Vec<Hex>")]
     pub cm_merkle_proof: Vec<[u8; 32]>,
     /// The lower bound nullifier (the largest nullifier smaller than the target).
-    #[serde_as(as = "ReversedHex")]
     pub left_nullifier: Nullifier,
     /// The upper bound nullifier (the smallest nullifier larger than the target).
-    #[serde_as(as = "ReversedHex")]
     pub right_nullifier: Nullifier,
     /// The position of the leaf in the non-membership Merkle tree.
     pub nf_leaf_position: u64,

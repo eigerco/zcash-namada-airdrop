@@ -93,6 +93,32 @@ async fn main() -> eyre::Result<()> {
             .await
         }
         Commands::AirdropConfigurationSchema => airdrop_configuration_schema(),
+        Commands::GenerateClaimProofs {
+            claim_inputs_file,
+            proofs_output_file,
+            seed,
+            network,
+            proving_key_file,
+            verifying_key_file,
+        } => {
+            airdrop::commands::generate_claim_proofs(
+                claim_inputs_file,
+                proofs_output_file,
+                seed,
+                network,
+                proving_key_file,
+                verifying_key_file,
+            )
+            .await
+        }
+        Commands::GenerateClaimParams {
+            proving_key_file,
+            verifying_key_file,
+        } => airdrop::commands::generate_claim_params(proving_key_file, verifying_key_file).await,
+        Commands::VerifyClaimProof {
+            proofs_file,
+            verifying_key_file,
+        } => airdrop::commands::verify_claim_sapling_proof(proofs_file, verifying_key_file).await,
     };
 
     if let Err(e) = res {
