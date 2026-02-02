@@ -1,11 +1,37 @@
-{ inputs, ... }:
+{ inputs, lib, ... }:
 {
   imports = [ inputs.git-hooks-nix.flakeModule ];
 
   perSystem =
-    { pkgs, ... }:
+    {
+      pkgs,
+      rustToolchainNightly,
+      patchedOrchard,
+      patchedSapling,
+      ...
+    }:
     let
-      rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain.toml;
+      # Create a source with patched dependencies for pre-commit checks
+      sourceWithPatchedDeps = pkgs.runCommand "source-with-patched-deps" { } ''
+        cp -r ${inputs.self} $out
+        chmod -R +w $out
+        ln -sfn ${patchedOrchard} $out/.patched-orchard
+        ln -sfn ${patchedSapling} $out/.patched-sapling-crypto
+      '';
+
+      # Prefetch cargo dependencies for sandbox builds
+      cargoDeps = pkgs.rustPlatform.importCargoLock {
+        lockFile = ../Cargo.lock;
+      };
+
+      # Wrapper script for cargo-audit that skips in Nix sandbox (no network access)
+      cargoAuditWrapper = pkgs.writeShellScript "cargo-audit-wrapper" ''
+        if [ -n "$NIX_BUILD_TOP" ]; then
+          echo "Skipping cargo-audit in Nix sandbox (requires network access)"
+          exit 0
+        fi
+        exec ${pkgs.cargo-audit}/bin/cargo-audit audit
+      '';
     in
     {
       # To configure git hooks after you change this file, run:
@@ -13,6 +39,9 @@
       pre-commit = {
         check.enable = true;
         settings = {
+          # Use source with patched dependencies for nix flake check
+          rootSrc = lib.mkForce sourceWithPatchedDeps;
+          settings.rust.check.cargoDeps = cargoDeps;
           hooks = {
             # markdown (config in .markdownlint.json)
             markdownlint.enable = true;
@@ -32,23 +61,27 @@
 
             # Rust
             cargo-check = {
-              package = rustToolchain;
-              enable = false; # Disabled due to offline mode issues with new dependencies
+              enable = true;
+              package = rustToolchainNightly;
+              entry = "${rustToolchainNightly}/bin/cargo check --all-targets --all-features";
+              extraPackages = [ rustToolchainNightly ];
             };
 
             cargo-test = {
-              enable = false; # Disabled due to offline mode issues with new dependencies
+              enable = true;
               name = "cargo test";
-              entry = "${rustToolchain}/bin/cargo test";
+              entry = "${rustToolchainNightly}/bin/cargo test";
+              files = "\\.rs$";
               pass_filenames = false;
+              extraPackages = [ rustToolchainNightly ];
             };
 
             # Check for security vulnerabilities
+            # Skipped in Nix sandbox (requires network access to fetch advisory database)
             cargo-audit = {
-              enable = false; # Disabled due to offline mode issues with new dependencies
+              enable = true;
               name = "cargo-audit";
-              entry = "${pkgs.cargo-audit}/bin/cargo-audit audit";
-              pass_filenames = false;
+              entry = "${cargoAuditWrapper}";
             };
 
             # Check for unused dependencies
@@ -56,13 +89,20 @@
               enable = true;
               name = "cargo-machete";
               entry = "${pkgs.cargo-machete}/bin/cargo-machete";
-              pass_filenames = false;
             };
 
             # Rust linter
             clippy = {
-              package = rustToolchain;
-              enable = false; # Disabled due to offline mode issues with new dependencies
+              enable = true;
+              packageOverrides = {
+                cargo = rustToolchainNightly;
+                clippy = rustToolchainNightly;
+              };
+              settings = {
+                allFeatures = true;
+                denyWarnings = true;
+                extraArgs = "--all-targets";
+              };
             };
 
             # secret detection

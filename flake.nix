@@ -35,6 +35,7 @@
 
       imports = [
         ./nix/pkgs
+        ./nix/lib.nix
         ./nix/devshell.nix
         ./nix/formatting.nix
         ./nix/git-hooks.nix

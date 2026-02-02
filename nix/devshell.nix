@@ -1,33 +1,14 @@
-{ inputs, ... }:
 {
   perSystem =
     {
       config,
       pkgs,
+      rustToolchainStable,
+      patchedOrchard,
+      patchedSapling,
       ...
     }:
     let
-      # Patch orchard
-      patchedOrchard = pkgs.runCommand "orchard-patched" { } ''
-        cp -r ${inputs.orchard} $out
-        chmod -R +w $out
-
-        # Apply a patch file
-        patch -p1 -d $out < ${./airdrop-orchard-nullifier.patch}
-      '';
-
-      # Patch sapling
-      patchedSapling = pkgs.runCommand "sapling-patched" { } ''
-        cp -r ${inputs.sapling-crypto} $out
-        chmod -R +w $out
-
-        # Apply a patch file
-        patch -p1 -d $out < ${./airdrop-sapling-nullifier.patch}
-      '';
-
-      # Define Rust toolchain - you can customize this
-      rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain.toml;
-
       # Define additional development tools
       devTools = with pkgs; [
         # Rust tools
@@ -81,15 +62,14 @@
         echo "🦀 Rust development environment loaded!"
         echo "Rust version: $(rustc --version)"
         echo "Cargo version: $(cargo --version)"
-        echo "Build directory: $PWD"
-        echo "Source directory: $src"
+        echo "Source directory: $PWD"
         echo ""
         echo "Available commands:"
         echo "  cargo build    - Build the project"
         echo "  cargo run      - Run the project"
         echo "  cargo test     - Run tests"
         echo "  cargo watch -x run - Auto-rebuild on changes"
-        echo "  nix fmt        - Format code with nixformmater"
+        echo "  nix fmt        - Format code with nixfmt"
         echo "  nix check      - Code formatting and other linters checks"
         echo ""
         echo "Project initialized with ./rust-toolchain.toml"
@@ -101,7 +81,7 @@
     {
       # Development shell
       devShells.default = pkgs.mkShell {
-        buildInputs = [ rustToolchain ] ++ devTools;
+        buildInputs = [ rustToolchainStable ] ++ devTools;
 
         inherit (envs.rust)
           RUST_SRC_PATH
