@@ -96,14 +96,14 @@ async fn main() -> eyre::Result<()> {
         Commands::GenerateClaimProofs {
             claim_inputs_file,
             proofs_output_file,
-            seed,
+            seed_file,
             network,
             proving_key_file,
         } => {
             airdrop::commands::generate_claim_proofs(
                 claim_inputs_file,
                 proofs_output_file,
-                seed,
+                seed_file,
                 network,
                 proving_key_file,
             )

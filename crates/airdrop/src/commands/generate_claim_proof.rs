@@ -11,7 +11,9 @@ use claim_circuit::{
 };
 use eyre::{Context as _, ensure};
 use non_membership_proofs::Nullifier;
+use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncReadExt;
 use tracing::{info, warn};
 use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_protocol::consensus::Network;
@@ -131,16 +133,18 @@ pub async fn generate_claim_params(
 }
 
 /// Parse a hex-encoded seed into a 64-byte array.
-fn parse_seed(seed_hex: &str) -> eyre::Result<[u8; 64]> {
-    let seed_bytes = hex::decode(seed_hex).context(format!("Invalid hex seed: {seed_hex:?}"))?;
-    ensure!(
-        seed_bytes.len() == 64,
-        "Seed must be exactly 64 bytes (128 hex characters), got {} bytes",
-        seed_bytes.len()
-    );
-    seed_bytes
-        .try_into()
-        .map_err(|_| eyre::eyre!("Failed to convert seed to array"))
+fn parse_seed(seed_hex: &str) -> eyre::Result<SecretBox<[u8; 64]>> {
+    // Wrap in Zeroizing immediately so it's zeroized on drop even if we return early
+    let seed_bytes = zeroize::Zeroizing::new(hex::decode(seed_hex).context("Invalid hex seed")?);
+
+    let array: [u8; 64] = seed_bytes[..].try_into().map_err(|_| {
+        eyre::eyre!(
+            "Seed must be exactly 64 bytes (128 hex characters), got {} bytes",
+            seed_bytes.len()
+        )
+    })?;
+
+    Ok(SecretBox::new(Box::new(array)))
 }
 
 /// Sapling proof generation keys for both external and internal scopes.
@@ -248,25 +252,40 @@ async fn generate_sapling_proofs_parallel(
 ///
 /// * `claim_inputs_file` - Path to JSON file containing claim inputs (from `AirdropClaim`)
 /// * `proofs_output_file` - Path to write generated proofs
-/// * `seed` - 64-byte seed as hex string for deriving spending keys
+/// * `seed_file` - Path to file containing 64-byte seed as hex string for deriving spending keys
 /// * `network` - Network (mainnet or testnet)
 /// * `proving_key_file` - Path to proving key (will be generated if not exists)
-/// * `verifying_key_file` - Path to verifying key (will be generated if not exists)
 ///
 /// # Errors
 /// Returns an error if file I/O, parsing, key derivation, or proof generation fails.
 pub async fn generate_claim_proofs(
     claim_inputs_file: PathBuf,
     proofs_output_file: PathBuf,
-    seed: String,
+    seed_file: PathBuf,
     network: Network,
     proving_key_file: PathBuf,
 ) -> eyre::Result<()> {
-    info!("Parsing seed...");
-    let seed = parse_seed(&seed)?;
+    info!(file = ?seed_file, "Reading seed from file...");
+
+    let mut file = tokio::fs::File::open(&seed_file)
+        .await
+        .context("Failed to open seed file")?;
+
+    // Read directly into a Zeroizing buffer to avoid intermediate String allocations
+    let mut buffer = zeroize::Zeroizing::new(Vec::new());
+    file.read_to_end(&mut buffer)
+        .await
+        .context("Failed to read seed file")?;
+
+    // Borrow as &str - no intermediate String allocation
+    let seed_hex_str = std::str::from_utf8(&buffer)
+        .context("Seed file is not valid UTF-8")?
+        .trim();
+
+    let seed = parse_seed(seed_hex_str)?;
 
     info!("Deriving spending keys...");
-    let keys = derive_sapling_proof_generation_keys(network, &seed)?;
+    let keys = derive_sapling_proof_generation_keys(network, seed.expose_secret())?;
     info!("Derived Sapling proof generation keys (external + internal)");
 
     let params = load_params(proving_key_file).await?;

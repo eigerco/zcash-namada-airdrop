@@ -174,10 +174,12 @@ The `airdrop-claim` command outputs claim inputs (note data + non-membership pro
 airdrop generate-claim-proofs \
   --claim-inputs-file airdrop_claims.json \
   --proofs-output-file airdrop_claim_proofs.json \
-  --seed <your-64-byte-hex-seed> \
+  --seed-file seed.txt \
   --network testnet \
   --proving-key-file claim_proving_key.params
 ```
+
+The seed file should contain your 64-byte wallet seed as hex.
 
 This command will:
 
@@ -193,7 +195,7 @@ This command will:
 | ---------------------- | ---------------------------------------------------------------------- |
 | `--claim-inputs-file`  | Path to claim inputs JSON (output of `airdrop-claim`)                  |
 | `--proofs-output-file` | Output path for generated proofs. Default: `airdrop_claim_proofs.json` |
-| `--seed`               | Your 64-byte wallet seed as hex (128 hex characters)                   |
+| `--seed-file`          | Path to file containing your 64-byte wallet seed as hex                |
 | `--network`            | Network to use (`mainnet` or `testnet`). Default: `mainnet`            |
 | `--proving-key-file`   | Path to proving key. Default: `claim_proving_key.params`               |
 
@@ -263,7 +265,7 @@ Instead of passing arguments on the command line, you can use environment variab
 | `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                          |
 | `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                     |
 | `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                          |
-| `SEED`                        | 64-byte wallet seed as hex (128 hex characters)          |
+| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex       |
 | `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)  |
 | `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                   |
 

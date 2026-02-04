@@ -111,9 +111,9 @@ pub enum Commands {
         )]
         proofs_output_file: PathBuf,
 
-        /// 64-byte seed as hex (128 hex characters) for deriving spending keys
-        #[arg(long, env = "SEED")]
-        seed: String,
+        /// Path to file containing 64-byte seed as hex for deriving spending keys
+        #[arg(long, env = "SEED_FILE")]
+        seed_file: PathBuf,
 
         /// Network to use (mainnet or testnet)
         #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]

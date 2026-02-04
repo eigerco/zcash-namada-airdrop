@@ -60,6 +60,7 @@ dependencies = [
  "rustls",
  "sapling-crypto",
  "schemars 1.2.1",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "serde_with",
@@ -72,6 +73,7 @@ dependencies = [
  "ureq",
  "zcash_keys",
  "zcash_protocol",
+ "zeroize",
  "zip32",
 ]
 
