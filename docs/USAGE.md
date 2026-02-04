@@ -176,8 +176,7 @@ airdrop generate-claim-proofs \
   --proofs-output-file airdrop_claim_proofs.json \
   --seed <your-64-byte-hex-seed> \
   --network testnet \
-  --proving-key-file claim_proving_key.params \
-  --verifying-key-file claim_verifying_key.params
+  --proving-key-file claim_proving_key.params
 ```
 
 This command will:
@@ -197,7 +196,6 @@ This command will:
 | `--seed`               | Your 64-byte wallet seed as hex (128 hex characters)                   |
 | `--network`            | Network to use (`mainnet` or `testnet`). Default: `mainnet`            |
 | `--proving-key-file`   | Path to proving key. Default: `claim_proving_key.params`               |
-| `--verifying-key-file` | Path to verifying key. Default: `claim_verifying_key.params`           |
 
 > **Important**: Download the official proving and verifying keys published by the airdrop organizer. Do not generate your own—proofs made with different keys will be rejected.
 >

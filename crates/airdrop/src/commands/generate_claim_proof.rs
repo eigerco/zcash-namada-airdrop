@@ -65,34 +65,20 @@ pub struct SaplingClaimProofResult {
 }
 
 /// Generate or load the claim circuit parameters with custom paths.
-async fn load_or_generate_params_with_paths(
-    proving_key_path: PathBuf,
-    verifying_key_path: PathBuf,
-) -> eyre::Result<ClaimParameters> {
-    if tokio::fs::try_exists(&proving_key_path).await? {
-        info!("Loading existing claim circuit parameters (this may take a moment)...");
-        let params = tokio::task::spawn_blocking(move || load_parameters(&proving_key_path, false))
-            .await?
-            .context("Failed to load parameters")?;
-        info!("Parameters loaded successfully");
-        Ok(params)
-    } else {
-        info!("Generating new claim circuit parameters (this may take a while)...");
-        let params = tokio::task::spawn_blocking(generate_parameters)
-            .await?
-            .map_err(|e| eyre::eyre!("Parameter generation failed: {e}"))?;
+async fn load_params(proving_key_path: PathBuf) -> eyre::Result<ClaimParameters> {
+    ensure!(
+        tokio::fs::try_exists(&proving_key_path).await?,
+        "Proving key not found at {}, please use the generated parameters for the airdrop",
+        proving_key_path.display()
+    );
 
-        info!("Saving proving key to {}...", proving_key_path.display());
-        info!(
-            "Saving verifying key to {}...",
-            verifying_key_path.display()
-        );
-        tokio::task::spawn_blocking(move || {
-            save_parameters(&params, &proving_key_path, &verifying_key_path).map(|()| params)
-        })
+    info!("Loading existing claim circuit parameters (this may take a moment)...");
+    let params = tokio::task::spawn_blocking(move || load_parameters(&proving_key_path, false))
         .await?
-        .context("Failed to save parameters")
-    }
+        .context("Failed to load parameters")?;
+    info!("Parameters loaded successfully");
+
+    Ok(params)
 }
 
 /// Generate claim circuit parameters (proving and verifying keys).
@@ -275,7 +261,6 @@ pub async fn generate_claim_proofs(
     seed: String,
     network: Network,
     proving_key_file: PathBuf,
-    verifying_key_file: PathBuf,
 ) -> eyre::Result<()> {
     info!("Parsing seed...");
     let seed = parse_seed(&seed)?;
@@ -284,7 +269,7 @@ pub async fn generate_claim_proofs(
     let keys = derive_sapling_proof_generation_keys(network, &seed)?;
     info!("Derived Sapling proof generation keys (external + internal)");
 
-    let params = load_or_generate_params_with_paths(proving_key_file, verifying_key_file).await?;
+    let params = load_params(proving_key_file).await?;
     let pvk = params.prepared_verifying_key();
     info!("Parameters ready");
 

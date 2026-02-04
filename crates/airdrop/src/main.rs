@@ -99,7 +99,6 @@ async fn main() -> eyre::Result<()> {
             seed,
             network,
             proving_key_file,
-            verifying_key_file,
         } => {
             airdrop::commands::generate_claim_proofs(
                 claim_inputs_file,
@@ -107,7 +106,6 @@ async fn main() -> eyre::Result<()> {
                 seed,
                 network,
                 proving_key_file,
-                verifying_key_file,
             )
             .await
         }

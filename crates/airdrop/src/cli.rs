@@ -126,14 +126,6 @@ pub enum Commands {
             default_value = "claim_proving_key.params"
         )]
         proving_key_file: PathBuf,
-
-        /// Path to verifying key file (will be generated if not exists)
-        #[arg(
-            long,
-            env = "VERIFYING_KEY_FILE",
-            default_value = "claim_verifying_key.params"
-        )]
-        verifying_key_file: PathBuf,
     },
     /// Generate claim circuit parameters (proving and verifying keys)
     GenerateClaimParams {

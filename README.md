@@ -22,8 +22,6 @@ These proofs are constructed using Merkle trees built from the set of known null
 After cloning the repo:
 
 ```bash
-git submodule update --init --recursive
-
 git clone --branch v0.11.0 --single-branch https://github.com/zcash/orchard.git .patched-orchard
 git -C .patched-orchard apply "../nix/airdrop-orchard-nullifier.patch"
 
@@ -34,12 +32,6 @@ git -C .patched-sapling-crypto apply "../nix/airdrop-sapling-nullifier.patch"
 > **Note**: The patches add support for deriving "hiding nullifiers" - a privacy-preserving nullifier derivation that allows proving non-membership without revealing the actual nullifier.
 
 ### With nix
-
-Submodule updates need to be run manually:
-
-```bash
-git submodule update --init --recursive
-```
 
 This workspace uses Nix to enhance the development experience.
 
