@@ -43,34 +43,43 @@ The workspace also uses `pre-commit` checks. These can be removed if they prove 
 
 ## Available Tools
 
-### airdrop
+### zair
 
 - **Description**: CLI tool for building Zcash airdrop snapshots and generating claim proofs. It supports the following commands:
-  - `build-airdrop-configuration`: Fetches nullifiers from a lightwalletd server and saves them as snapshot files. Also exports a configuration JSON with Merkle tree roots.
-  - `airdrop-claim`: Scans the chain for notes belonging to provided viewing keys, builds Merkle trees from snapshot nullifiers, and generates claim inputs for unspent notes.
-  - `generate-claim-proofs`: Generates Groth16 ZK proofs from claim inputs (runs in parallel).
-  - `generate-claim-params`: Generates the Groth16 proving and verifying keys (organizers only).
-  - `verify-claim-proof`: Verifies generated claim proofs against the verifying key.
+  - `build-config`: Fetches nullifiers from a lightwalletd server and saves them as snapshot files. Also exports a configuration JSON with Merkle tree roots.
+  - `claim-prepare`: Scans the chain for notes belonging to provided viewing keys, builds Merkle trees from snapshot nullifiers, and generates claim inputs for unspent notes.
+  - `prove`: Generates Groth16 ZK proofs from claim inputs (runs in parallel).
+  - `setup-local`: Generates the Groth16 proving and verifying keys (organizers only).
+  - `verify`: Verifies generated claim proofs against the verifying key.
   - Run with `--help` to check the usage.
 
 ### mnemonic-to-fvks
 
 - **Description**: A utility to convert a Zcash mnemonic to Full Viewing Keys. Outputs the Unified Full Viewing Key in human-readable Bech32 format (e.g., `uview1...`), as well as the individual Orchard and Sapling keys in hex format. Run with `--help` to check the usage.
 
-### non-membership-proofs
+### zair-nonmembership
 
-- **Description**: Core library for generating non-membership proofs for Zcash nullifiers. Provides functionality for:
-  - Streaming nullifiers from lightwalletd or local files
-  - Scanning the chain for user notes using Full Viewing Keys
-  - Building Merkle trees from sorted nullifiers for non-membership proofs
-  - Deriving standard and hiding nullifiers for Sapling and Orchard notes
+- **Description**: Nullifier and non-membership Merkle tree primitives used by the airdrop tools.
 
-### claim-circuit
+### zair-scan
 
-- **Description**: Custom Groth16 ZK circuit for airdrop claims. Proves ownership of unspent Sapling notes without revealing the actual nullifier. The circuit verifies:
-  - Note commitment inclusion in the Zcash commitment tree
-  - The note was not spent at the snapshot height
-  - Correct derivation of the hiding nullifier
+- **Description**: lightwalletd integration + chain scanning used by the CLI (fetching nullifiers, scanning for notes, etc).
+
+### zair-core
+
+- **Description**: Shared configuration and claim-input formats (JSON) used across the workspace.
+
+### zair-sdk
+
+- **Description**: Library/workflow crate used by `zair` (snapshot building, claim generation, proof helpers).
+
+### zair-sapling-proofs
+
+- **Description**: Sapling claim proving + verification API. Verification is available by default; proving is behind the `prove` feature (so verification-only consumers don’t compile the circuit).
+
+### zair-sapling-circuit
+
+- **Description**: The Sapling claim circuit implementation (heavy; used only for keygen/proving).
 
 ## Usage
 
@@ -78,13 +87,13 @@ Assuming that the project is set up correctly.
 
 ### Building the Project
 
-After completing the setup steps above, you can build the project. The project provides two binaries, `mnemonic-to-fvks` and the `airdrop`. To build them use:
+After completing the setup steps above, you can build the project. The project provides two binaries, `mnemonic-to-fvks` and `zair`. To build them use:
 
 ```bash
 cargo build --release
 ```
 
-This will produce the optimized `mnemonic-to-fvks` and `airdrop` executables in the `target/release` directory.
+This will produce the optimized `mnemonic-to-fvks` and `zair` executables in the `target/release` directory.
 
 ### User Guide
 

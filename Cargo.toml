@@ -2,9 +2,13 @@
 resolver = "2"
 members = [
   "crates/mnemonic-to-fvks",
-  "crates/non-membership-proofs",
-  "crates/airdrop",
-  "crates/claim-circuit",
+  "crates/zair-nonmembership",
+  "crates/zair-scan",
+  "crates/zair-core",
+  "crates/zair-sapling-circuit",
+  "crates/zair-sapling-proofs",
+  "crates/zair-sdk",
+  "crates/zair-cli",
   "crates/test-utils",
 ]
 
@@ -16,11 +20,17 @@ license = "MIT"
 
 [workspace.dependencies]
 mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
-non-membership-proofs = { path = "crates/non-membership-proofs" }
-claim-circuit = { path = "crates/claim-circuit" }
 test-utils = { path = "crates/test-utils" }
+zair-nonmembership = { path = "crates/zair-nonmembership" }
+zair-scan = { path = "crates/zair-scan" }
+zair-core = { path = "crates/zair-core" }
+zair-sapling-circuit = { path = "crates/zair-sapling-circuit" }
+zair-sapling-proofs = { path = "crates/zair-sapling-proofs" }
+zair-sdk = { path = "crates/zair-sdk" }
+zair-cli = { path = "crates/zair-cli" }
 
 assert_cmd = "2.1.2"
+base64 = "0.22.1"
 bip39 = "2.2.2"
 blake2s_simd = "1.0.3"
 bellman = "0.14"
@@ -46,6 +56,8 @@ itertools = "0.14.0"
 orchard = "0.11.0"
 prost = "0.14.1"
 rand = "0.9.2"
+rand_core = "0.6"
+rand_xorshift = "0.3"
 redjubjub = "0.8"
 rpassword = "7.4.0"
 rustls = "0.23.35"

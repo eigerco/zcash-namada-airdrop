@@ -35,14 +35,14 @@ The ZK proof convinces the verifier of all three facts without revealing your ac
 
 ### Step 1: Build the Airdrop Snapshot
 
-Run `build-airdrop-configuration` to:
+Run `build-config` to:
 
 1. Fetch all nullifiers from the blockchain up to the snapshot height
 2. Build Merkle trees for Sapling and Orchard pools
 3. Export snapshot files and a configuration JSON with Merkle roots
 
 ```bash
-airdrop build-airdrop-configuration \
+zair build-config \
   --snapshot 280000..=3743871 \
   --network testnet \
   --lightwalletd-url https://testnet.zec.rocks:443 \
@@ -57,7 +57,7 @@ This produces:
 - `sapling-nullifiers-testnet.bin` — Sapling pool snapshot nullifiers
 - `orchard-nullifiers-testnet.bin` — Orchard pool snapshot nullifiers
 
-**Parameters of `build-airdrop-configuration` explained:**
+**Parameters of `build-config` explained:**
 
 | Parameter                       | Description                                                                           |
 | ------------------------------- | ------------------------------------------------------------------------------------- |
@@ -94,7 +94,7 @@ To scan for your notes, you need your Unified Full Viewing Key (UFVK). If you al
 
 #### Viewing Key Format
 
-The `airdrop` CLI expects a **Unified Full Viewing Key** in Bech32 format:
+The `zair` CLI expects a **Unified Full Viewing Key** in Bech32 format:
 
 - **Mainnet**: starts with `uview1...`
 - **Testnet**: starts with `uviewtest1...`
@@ -128,10 +128,10 @@ It outputs:
 
 ### Step 3: Users Generate Their Claims
 
-Download the snapshot files published by the airdrop organizer, then run `airdrop-claim` with your viewing keys:
+Download the snapshot files published by the airdrop organizer, then run `claim-prepare` with your viewing keys:
 
 ```bash
-airdrop airdrop-claim \
+zair claim-prepare \
   --network testnet \
   --snapshot 280000..=3743871 \
   --lightwalletd-url https://testnet.zec.rocks:443 \
@@ -150,7 +150,7 @@ This command will:
 3. For each unspent note found, generate a non-membership proof
 4. Output the proofs to `airdrop_claims.json`
 
-**Parameters of `airdrop-claim` explained:**
+**Parameters of `claim-prepare` explained:**
 
 | Parameter                       | Description                                                  |
 | ------------------------------- | ------------------------------------------------------------ |
@@ -168,10 +168,10 @@ This command will:
 
 ### Step 4: Generate Claim Proofs
 
-The `airdrop-claim` command outputs claim inputs (note data + non-membership proofs). To create the final ZK proofs that can be submitted on-chain, use `generate-claim-proofs`:
+The `claim-prepare` command outputs claim inputs (note data + non-membership proofs). To create the final ZK proofs that can be submitted on-chain, use `prove`:
 
 ```bash
-airdrop generate-claim-proofs \
+zair prove \
   --claim-inputs-file airdrop_claims.json \
   --proofs-output-file airdrop_claim_proofs.json \
   --seed-file seed.txt \
@@ -189,11 +189,11 @@ This command will:
 4. Verify each proof before including it in the output
 5. Output the proofs to `airdrop_claim_proofs.json`
 
-**Parameters of `generate-claim-proofs` explained:**
+**Parameters of `prove` explained:**
 
 | Parameter              | Description                                                            |
 | ---------------------- | ---------------------------------------------------------------------- |
-| `--claim-inputs-file`  | Path to claim inputs JSON (output of `airdrop-claim`)                  |
+| `--claim-inputs-file`  | Path to claim inputs JSON (output of `claim-prepare`)                  |
 | `--proofs-output-file` | Output path for generated proofs. Default: `airdrop_claim_proofs.json` |
 | `--seed-file`          | Path to file containing your 64-byte wallet seed as hex                |
 | `--network`            | Network to use (`mainnet` or `testnet`). Default: `mainnet`            |
@@ -208,7 +208,7 @@ This command will:
 To independently verify generated proofs:
 
 ```bash
-airdrop verify-claim-proof \
+zair verify \
   --proofs-file airdrop_claim_proofs.json \
   --verifying-key-file claim_verifying_key.params
 ```
@@ -231,7 +231,7 @@ This is a sanity check to ensure the generated proofs are valid before submissio
 The airdrop organizer must generate and publish the Groth16 proving and verifying keys:
 
 ```bash
-airdrop generate-claim-params \
+zair setup-local \
   --proving-key-file claim_proving_key.params \
   --verifying-key-file claim_verifying_key.params
 ```
@@ -243,31 +243,29 @@ airdrop generate-claim-params \
 To view the JSON schema for the airdrop configuration file:
 
 ```bash
-airdrop airdrop-configuration-schema
+zair config-schema
 ```
 
-This prints the JSON schema describing the structure of the airdrop configuration file that is produced from `build-airdrop-configuration` subcommand.
+This prints the JSON schema describing the structure of the airdrop configuration file that is produced from `build-config` subcommand.
 
 ## Environment Variables
 
 Instead of passing arguments on the command line, you can use environment variables or a `.env` file:
 
-| Variable                      | Description                                              |
-| ----------------------------- | -------------------------------------------------------- |
-| `AIRDROP_CLAIMS_FILE`         | Path to write the valid airdrop claims to this JSON file |
-| `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys            |
-| `CLAIM_INPUTS_FILE`           | Path to claim inputs JSON (for `generate-claim-proofs`)  |
-| `CLAIM_PROOFS_FILE`           | Path to claim proofs JSON (for `verify-claim-proof`)     |
-| `CLAIM_PROOFS_OUTPUT_FILE`    | Output path for generated claim proofs                   |
-| `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON               |
-| `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL                           |
-| `NETWORK`                     | Network to use (`mainnet` or `testnet`)                  |
-| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                          |
-| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                     |
-| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                          |
-| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex       |
-| `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)  |
-| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                   |
+| Variable                      | Description                                                            |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| `AIRDROP_CLAIMS_FILE`         | Path for claims JSON (output of `claim-prepare`, input to `prove`)     |
+| `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys                          |
+| `CLAIM_PROOFS_FILE`           | Path for proofs JSON (output of `prove`, input to `verify`)            |
+| `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON                             |
+| `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL                                         |
+| `NETWORK`                     | Network to use (`mainnet` or `testnet`)                                |
+| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                                        |
+| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                                   |
+| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                                        |
+| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex                     |
+| `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)                |
+| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                                 |
 
 ## Troubleshooting
 

@@ -39,45 +39,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "airdrop"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "base64 0.22.1",
- "bellman",
- "bls12_381",
- "claim-circuit",
- "clap",
- "console-subscriber",
- "dirs",
- "dotenvy",
- "eyre",
- "group",
- "hex",
- "http",
- "non-membership-proofs",
- "orchard",
- "rustls",
- "sapling-crypto",
- "schemars 1.2.1",
- "secrecy 0.10.3",
- "serde",
- "serde_json",
- "serde_with",
- "tempfile",
- "test-utils",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ureq",
- "zcash_keys",
- "zcash_protocol",
- "zeroize",
- "zip32",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -538,25 +499,6 @@ dependencies = [
  "crypto-common 0.1.7",
  "inout",
  "zeroize",
-]
-
-[[package]]
-name = "claim-circuit"
-version = "0.1.0"
-dependencies = [
- "bellman",
- "bls12_381",
- "ff",
- "group",
- "incrementalmerkletree",
- "jubjub",
- "non-membership-proofs",
- "rand 0.8.5",
- "rand_core 0.6.4",
- "rand_xorshift",
- "sapling-crypto",
- "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1873,42 +1815,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "non-membership-proofs"
-version = "0.1.0"
-dependencies = [
- "blake2s_simd",
- "bridgetree",
- "bytemuck",
- "ff",
- "futures 0.3.31",
- "group",
- "hex",
- "http",
- "incrementalmerkletree",
- "orchard",
- "rand 0.9.2",
- "sapling-crypto",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "serde_with",
- "shardtree",
- "tempfile",
- "test-utils",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tonic",
- "tonic-prost-build",
- "tracing",
- "zcash_client_backend",
- "zcash_keys",
- "zcash_primitives",
- "zcash_protocol",
- "zip32",
-]
-
-[[package]]
 name = "nonempty"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2230,8 +2136,6 @@ dependencies = [
  "prettyplease",
  "prost",
  "prost-types",
- "pulldown-cmark",
- "pulldown-cmark-to-cmark",
  "regex",
  "syn",
  "tempfile",
@@ -2257,26 +2161,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8991c4cbdb8bc5b11f0b074ffe286c30e523de90fee5ba8132f1399f23cb3dd7"
 dependencies = [
  "prost",
-]
-
-[[package]]
-name = "pulldown-cmark"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
-dependencies = [
- "bitflags",
- "memchr",
- "unicase",
-]
-
-[[package]]
-name = "pulldown-cmark-to-cmark"
-version = "22.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50793def1b900256624a709439404384204a5dc3a6ec580281bfaac35e882e90"
-dependencies = [
- "pulldown-cmark",
 ]
 
 [[package]]
@@ -3361,12 +3245,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "unicase"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3852,6 +3730,148 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "zair-cli"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "base64 0.22.1",
+ "clap",
+ "console-subscriber",
+ "dirs",
+ "dotenvy",
+ "eyre",
+ "hex",
+ "rustls",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+ "zair-core",
+ "zair-sdk",
+ "zcash_keys",
+ "zcash_protocol",
+]
+
+[[package]]
+name = "zair-core"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "schemars 1.2.1",
+ "serde",
+ "serde_with",
+ "test-utils",
+ "zip32",
+]
+
+[[package]]
+name = "zair-nonmembership"
+version = "0.1.0"
+dependencies = [
+ "bridgetree",
+ "incrementalmerkletree",
+ "sapling-crypto",
+ "test-utils",
+ "thiserror 2.0.18",
+ "zair-core",
+]
+
+[[package]]
+name = "zair-sapling-circuit"
+version = "0.1.0"
+dependencies = [
+ "bellman",
+ "bls12_381",
+ "group",
+ "jubjub",
+ "rand_core 0.6.4",
+ "rand_xorshift",
+ "sapling-crypto",
+]
+
+[[package]]
+name = "zair-sapling-proofs"
+version = "0.1.0"
+dependencies = [
+ "bellman",
+ "bls12_381",
+ "ff",
+ "group",
+ "incrementalmerkletree",
+ "jubjub",
+ "rand 0.8.5",
+ "sapling-crypto",
+ "thiserror 2.0.18",
+ "zair-nonmembership",
+ "zair-sapling-circuit",
+]
+
+[[package]]
+name = "zair-scan"
+version = "0.1.0"
+dependencies = [
+ "blake2s_simd",
+ "bytemuck",
+ "ff",
+ "futures 0.3.31",
+ "group",
+ "hex",
+ "http",
+ "incrementalmerkletree",
+ "orchard",
+ "rand 0.9.2",
+ "sapling-crypto",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "shardtree",
+ "tempfile",
+ "test-utils",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tonic",
+ "tracing",
+ "zair-core",
+ "zcash_client_backend",
+ "zcash_keys",
+ "zcash_primitives",
+ "zcash_protocol",
+ "zip32",
+]
+
+[[package]]
+name = "zair-sdk"
+version = "0.1.0"
+dependencies = [
+ "bellman",
+ "bls12_381",
+ "eyre",
+ "group",
+ "hex",
+ "http",
+ "orchard",
+ "sapling-crypto",
+ "schemars 1.2.1",
+ "secrecy 0.10.3",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "zair-core",
+ "zair-nonmembership",
+ "zair-sapling-proofs",
+ "zair-scan",
+ "zcash_keys",
+ "zcash_protocol",
+ "zeroize",
+ "zip32",
 ]
 
 [[package]]

@@ -1,0 +1,38 @@
+[package]
+name = "zair-sapling-proofs"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Sapling claim proving and verification for ZAIR (verification-only by default)"
+
+[features]
+default = ["verify"]
+verify = []
+prove = [
+  "dep:zair-sapling-circuit",
+  "dep:zair-nonmembership",
+  "dep:ff",
+  "dep:group",
+  "dep:incrementalmerkletree",
+  "dep:rand",
+  "dep:sapling",
+]
+
+[dependencies]
+bellman = { workspace = true }
+bls12_381 = { workspace = true }
+jubjub = { workspace = true }
+thiserror = { workspace = true }
+
+zair-nonmembership = { workspace = true, optional = true }
+zair-sapling-circuit = { workspace = true, optional = true }
+
+ff = { workspace = true, optional = true }
+group = { workspace = true, optional = true }
+incrementalmerkletree = { workspace = true, optional = true }
+rand = { version = "0.8", optional = true }
+sapling = { workspace = true, optional = true }
+
+[lints]
+workspace = true

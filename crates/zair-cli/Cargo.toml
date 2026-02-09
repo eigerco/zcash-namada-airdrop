@@ -1,0 +1,46 @@
+[package]
+name = "zair-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "zair"
+path = "src/main.rs"
+
+[features]
+default = ["prove"]
+tokio-console = ["dep:console-subscriber"]
+prove = ["zair-sdk/prove"]
+
+[dependencies]
+clap = { workspace = true, features = ["derive", "env"] }
+console-subscriber = { workspace = true, optional = true }
+dotenvy = { workspace = true }
+eyre = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "tracing",
+] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+zcash_keys = { workspace = true }
+zcash_protocol = { workspace = true }
+
+zair-core = { workspace = true }
+zair-sdk = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+base64 = { workspace = true }
+dirs = { workspace = true }
+hex = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+ureq = { workspace = true, features = ["json"] }
+
+[lints]
+workspace = true

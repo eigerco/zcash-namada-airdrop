@@ -1,0 +1,21 @@
+[package]
+name = "zair-sapling-circuit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Sapling claim circuit for ZAIR"
+
+[dependencies]
+bellman = { workspace = true }
+bls12_381 = { workspace = true }
+group = { workspace = true }
+jubjub = { workspace = true }
+sapling = { workspace = true, features = ["circuit"] }
+
+[dev-dependencies]
+rand_core = { workspace = true }
+rand_xorshift = { workspace = true }
+
+[lints]
+workspace = true
