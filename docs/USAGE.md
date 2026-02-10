@@ -31,6 +31,15 @@ The **hiding nullifier** is a privacy-preserving transformation of your real nul
 
 The ZK proof convinces the verifier of all three facts without revealing your actual nullifier, note value, or any other private data.
 
+## Feature Flags
+
+The `zair-cli` and `zair-sdk` crates use the `prove` feature to control proving support.
+
+- **Without `prove`**: lighter verification-focused build.
+- **With `prove`** (default): includes proof generation and local parameter setup.
+
+In the CLI, `prove` and `setup-local` are only available when `prove` is enabled.
+
 ## Workflow
 
 ### Step 1: Build the Airdrop Snapshot

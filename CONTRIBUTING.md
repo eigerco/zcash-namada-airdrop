@@ -70,7 +70,7 @@ this may take some time.
 The libraries supplied by this project follow [Semantic
 Versioning](https://semver.org/). If possible, it is desirable for users to
 depend upon the latest released version. Detailed change logs are available in
-the `CHANGELOG.md` file for each module.
+`CHANGELOG.md` files where present.
 
 Please note that the libraries in this workspace are under
 development and new SemVer major-version releases are frequent. Users of these
@@ -236,7 +236,7 @@ to aid with PR stacking.
   the use of the `git revise` tool to help maintain such a clean history within
   the context of a single PR.
 - When a commit alters the public API, fixes a bug, or changes the underlying
-  semantics of existing code, the commit MUST also modify the affected
+  semantics of existing code, the commit MUST also modify any affected
   crates' `CHANGELOG.md` files to clearly document the change.
 - Updated or added members of the public API MUST include complete `rustdoc`
   documentation comments.

@@ -11,7 +11,7 @@ use rand::rngs::OsRng;
 use zair_nonmembership::NON_MEMBERSHIP_TREE_DEPTH;
 use zair_sapling_circuit::Claim;
 
-use crate::proving::ClaimParameters;
+use crate::prover::proving::ClaimParameters;
 
 /// Errors that can occur during parameter operations.
 #[derive(Debug, thiserror::Error)]

@@ -24,7 +24,6 @@ pub struct Cli {
 #[derive(Debug, clap::Subcommand)]
 pub enum Commands {
     /// Build a snapshot of nullifiers from a source
-    #[command(name = "build-config")]
     BuildConfig {
         /// Common configuration arguments
         #[command(flatten)]
@@ -60,7 +59,6 @@ pub enum Commands {
     /// 2. Scan the chain for notes belonging to the provided viewing keys.
     /// 3. Output the non-membership proofs.
     #[command(verbatim_doc_comment)]
-    #[command(name = "claim-prepare")]
     ClaimPrepare {
         /// Common configuration arguments
         #[command(flatten)]
@@ -98,11 +96,9 @@ pub enum Commands {
         airdrop_configuration_file: PathBuf,
     },
     /// Prints the schema of the airdrop configuration JSON file
-    #[command(name = "config-schema")]
     ConfigSchema,
     /// Generate claim proofs using custom claim circuit
     #[cfg(feature = "prove")]
-    #[command(name = "prove")]
     Prove {
         /// Input file containing claim inputs (from `claim-prepare` command)
         #[arg(long, env = "AIRDROP_CLAIMS_FILE")]
@@ -134,7 +130,6 @@ pub enum Commands {
     },
     /// Generate claim circuit parameters (proving and verifying keys)
     #[cfg(feature = "prove")]
-    #[command(name = "setup-local")]
     SetupLocal {
         /// Output file for proving key
         #[arg(
@@ -153,7 +148,6 @@ pub enum Commands {
         verifying_key_file: PathBuf,
     },
     /// Verify claim proofs from a proofs file (output of `prove`)
-    #[command(name = "verify")]
     Verify {
         /// JSON file containing claim proofs (from `prove` command)
         #[arg(long, env = "CLAIM_PROOFS_FILE")]
@@ -185,13 +179,12 @@ pub struct CommonArgs {
     pub lightwalletd_url: String,
 }
 
-impl CommonArgs {
-    #[must_use]
-    pub fn into_common_config(self) -> CommonConfig {
-        CommonConfig {
-            network: self.network,
-            snapshot: self.snapshot,
-            lightwalletd_url: self.lightwalletd_url,
+impl From<CommonArgs> for CommonConfig {
+    fn from(args: CommonArgs) -> Self {
+        Self {
+            network: args.network,
+            snapshot: args.snapshot,
+            lightwalletd_url: args.lightwalletd_url,
         }
     }
 }

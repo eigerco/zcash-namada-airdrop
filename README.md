@@ -57,29 +57,14 @@ The workspace also uses `pre-commit` checks. These can be removed if they prove 
 
 - **Description**: A utility to convert a Zcash mnemonic to Full Viewing Keys. Outputs the Unified Full Viewing Key in human-readable Bech32 format (e.g., `uview1...`), as well as the individual Orchard and Sapling keys in hex format. Run with `--help` to check the usage.
 
-### zair-nonmembership
+## Crates
 
-- **Description**: Nullifier and non-membership Merkle tree primitives used by the airdrop tools.
-
-### zair-scan
-
-- **Description**: lightwalletd integration + chain scanning used by the CLI (fetching nullifiers, scanning for notes, etc).
-
-### zair-core
-
-- **Description**: Shared configuration and claim-input formats (JSON) used across the workspace.
-
-### zair-sdk
-
-- **Description**: Library/workflow crate used by `zair` (snapshot building, claim generation, proof helpers).
-
-### zair-sapling-proofs
-
-- **Description**: Sapling claim proving + verification API. Verification is available by default; proving is behind the `prove` feature (so verification-only consumers don’t compile the circuit).
-
-### zair-sapling-circuit
-
-- **Description**: The Sapling claim circuit implementation (heavy; used only for keygen/proving).
+- **zair-core**: Shared configuration and claim-input formats (JSON) used across the workspace.
+- **zair-sdk**: Library/workflow crate used by `zair` (snapshot building, claim generation, proof helpers).
+- **zair-nonmembership**: Nullifier and non-membership Merkle tree primitives used by the airdrop tools.
+- **zair-scan**: lightwalletd integration + chain scanning used by the CLI (fetching nullifiers, scanning for notes, etc).
+- **zair-sapling-proofs**: Sapling claim proving + verification API. Verification is available by default; proving is behind the `prove` feature (so verification-only consumers don't compile the circuit).
+- **zair-sapling-circuit**: The Sapling claim circuit implementation (heavy; used only for keygen/proving).
 
 ## Usage
 

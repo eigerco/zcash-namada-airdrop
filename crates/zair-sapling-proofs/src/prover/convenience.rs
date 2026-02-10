@@ -15,7 +15,9 @@ use sapling::value::{NoteValue, ValueCommitTrapdoor};
 use sapling::{Diversifier, Note, PaymentAddress, ProofGenerationKey, Rseed};
 
 use crate::error::ClaimProofError;
-use crate::proving::{ClaimParameters, MerklePath, create_proof, encode_proof, prepare_circuit};
+use crate::prover::proving::{
+    ClaimParameters, MerklePath, create_proof, encode_proof, prepare_circuit,
+};
 use crate::types::{ClaimProofInputs, ClaimProofOutput};
 
 /// Compute the Zcash nullifier from note inputs (for debugging/verification).

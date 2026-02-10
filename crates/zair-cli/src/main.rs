@@ -65,7 +65,7 @@ async fn main() -> eyre::Result<()> {
             hiding_factor,
         } => {
             build_airdrop_configuration(
-                config.into_common_config(),
+                config.into(),
                 configuration_output_file,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
@@ -86,7 +86,7 @@ async fn main() -> eyre::Result<()> {
                 .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {:?}", e))?;
 
             airdrop_claim(
-                config.into_common_config(),
+                config.into(),
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
                 ufvk,

@@ -5,6 +5,8 @@
 mod airdrop_claim;
 mod airdrop_configuration;
 mod claim_proofs;
+#[cfg(feature = "prove")]
+mod claim_proofs_prove;
 mod note_metadata;
 mod pool_processor;
 
@@ -12,7 +14,7 @@ pub use airdrop_claim::airdrop_claim;
 pub use airdrop_configuration::build_airdrop_configuration;
 pub use claim_proofs::verify_claim_sapling_proof;
 #[cfg(feature = "prove")]
-pub use claim_proofs::{generate_claim_params, generate_claim_proofs};
+pub use claim_proofs_prove::{generate_claim_params, generate_claim_proofs};
 
 /// Generates and prints the JSON schema for the `AirdropConfiguration` struct.
 ///

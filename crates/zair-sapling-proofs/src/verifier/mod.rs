@@ -6,8 +6,8 @@ use bellman::gadgets::multipack;
 use bellman::groth16::{PreparedVerifyingKey, Proof, verify_proof};
 use bls12_381::Bls12;
 
-use crate::ClaimProofError;
-use crate::types::{ClaimProofOutput, GrothProofBytes};
+pub use crate::error::ClaimProofError;
+pub use crate::types::{ClaimProofOutput, GROTH_PROOF_SIZE, GrothProofBytes};
 
 /// Errors that can occur during claim proof verification.
 #[derive(Debug, thiserror::Error)]
@@ -177,7 +177,7 @@ pub fn verify_claim_proof_bytes(
 /// Verify a claim proof from a [`ClaimProofOutput`].
 ///
 /// This is a convenience function for verifying proofs produced by
-/// [`generate_claim_proof`](crate::generate_claim_proof).
+/// [`generate_claim_proof`](crate::prover::generate_claim_proof).
 ///
 /// # Errors
 /// Returns an error if verification fails.
