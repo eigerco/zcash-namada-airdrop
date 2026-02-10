@@ -7,7 +7,6 @@ use cli::{Cli, Commands};
 use zair_sdk::commands::{
     airdrop_claim, airdrop_configuration_schema, build_airdrop_configuration,
 };
-use zcash_keys::keys::UnifiedFullViewingKey;
 
 fn init_tracing() -> eyre::Result<()> {
     #[cfg(feature = "tokio-console")]
@@ -59,22 +58,26 @@ async fn main() -> eyre::Result<()> {
     let res = match cli.command {
         Commands::BuildConfig {
             config,
+            pool,
             configuration_output_file,
             sapling_snapshot_nullifiers,
             orchard_snapshot_nullifiers,
-            hiding_factor,
+            sapling_target_id,
+            orchard_target_id,
         } => {
             build_airdrop_configuration(
                 config.into(),
+                pool,
                 configuration_output_file,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                hiding_factor.try_into()?,
+                sapling_target_id,
+                orchard_target_id,
             )
             .await
         }
         Commands::ClaimPrepare {
-            config,
+            lightwalletd_url,
             sapling_snapshot_nullifiers,
             orchard_snapshot_nullifiers,
             unified_full_viewing_key,
@@ -82,14 +85,11 @@ async fn main() -> eyre::Result<()> {
             airdrop_claims_output_file,
             airdrop_configuration_file,
         } => {
-            let ufvk = UnifiedFullViewingKey::decode(&config.network, &unified_full_viewing_key)
-                .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {:?}", e))?;
-
             airdrop_claim(
-                config.into(),
+                lightwalletd_url,
                 sapling_snapshot_nullifiers,
                 orchard_snapshot_nullifiers,
-                ufvk,
+                unified_full_viewing_key,
                 birthday_height,
                 airdrop_claims_output_file,
                 airdrop_configuration_file,

@@ -21,11 +21,11 @@ use zair_scan::ViewingKeys;
 use zair_scan::light_walletd::LightWalletd;
 use zair_scan::scanner::{AccountNotesVisitor, BlockScanner};
 use zcash_keys::keys::UnifiedFullViewingKey;
+use zcash_protocol::consensus::Network;
 
 use super::note_metadata::NoteMetadata;
 use super::pool_processor::{OrchardPool, PoolClaimResult, PoolProcessor, SaplingPool};
-use crate::common::CommonConfig;
-
+use crate::common::{resolve_lightwalletd_url, to_zcash_network};
 /// 1 MiB buffer for file I/O.
 const FILE_BUF_SIZE: usize = 1024 * 1024;
 
@@ -42,34 +42,52 @@ const FILE_BUF_SIZE: usize = 1024 * 1024;
 /// including scanning for notes, loading nullifiers, building Merkle trees,
 /// or generating proofs.
 #[instrument(skip_all, fields(
-    network = ?config.network,
-    snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end()),
+    lightwalletd_url = ?lightwalletd_url,
 ))]
 pub async fn airdrop_claim(
-    config: CommonConfig,
+    lightwalletd_url: Option<String>,
     sapling_snapshot_nullifiers: Option<PathBuf>,
     orchard_snapshot_nullifiers: Option<PathBuf>,
-    ufvk: UnifiedFullViewingKey,
+    unified_full_viewing_key: String,
     birthday_height: u64,
     airdrop_claims_output_file: PathBuf,
     airdrop_configuration_file: PathBuf,
 ) -> eyre::Result<()> {
-    let account_notes = find_user_notes(&config, ufvk.clone(), birthday_height).await?;
-
     let airdrop_config: AirdropConfiguration =
         serde_json::from_str(&tokio::fs::read_to_string(airdrop_configuration_file).await?)?;
+    validate_pool_inputs(
+        &airdrop_config,
+        sapling_snapshot_nullifiers.as_ref(),
+        orchard_snapshot_nullifiers.as_ref(),
+    )?;
+
+    let network = to_zcash_network(airdrop_config.network);
+    let lightwalletd_url = resolve_lightwalletd_url(network, lightwalletd_url.as_deref());
+    let ufvk = UnifiedFullViewingKey::decode(&network, &unified_full_viewing_key)
+        .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {e:?}"))?;
+
+    let account_notes = find_user_notes(
+        &lightwalletd_url,
+        network,
+        airdrop_config.snapshot_height,
+        ufvk.clone(),
+        birthday_height,
+    )
+    .await?;
 
     let viewing_keys = ViewingKeys::new(&ufvk);
 
     // Process pools in parallel
     let (sapling_result, orchard_result) = tokio::try_join!(
         process_pool_claims::<SaplingPool>(
+            airdrop_config.sapling.is_some(),
             &account_notes,
             &viewing_keys,
             &airdrop_config,
             sapling_snapshot_nullifiers,
         ),
         process_pool_claims::<OrchardPool>(
+            airdrop_config.orchard.is_some(),
             &account_notes,
             &viewing_keys,
             &airdrop_config,
@@ -85,7 +103,7 @@ pub async fn airdrop_claim(
     let user_proofs = AirdropClaimInputs::new(
         sapling_result.anchor,
         orchard_result.anchor,
-        airdrop_config.note_commitment_tree_anchors,
+        airdrop_config.note_commitment_tree_anchors(),
         sapling_result.claims,
         orchard_result.claims,
     );
@@ -102,20 +120,56 @@ pub async fn airdrop_claim(
     Ok(())
 }
 
+fn validate_pool_inputs(
+    airdrop_config: &AirdropConfiguration,
+    sapling_snapshot_nullifiers: Option<&PathBuf>,
+    orchard_snapshot_nullifiers: Option<&PathBuf>,
+) -> eyre::Result<()> {
+    let config_has_sapling = airdrop_config.sapling.is_some();
+    let config_has_orchard = airdrop_config.orchard.is_some();
+
+    ensure!(
+        config_has_sapling || config_has_orchard,
+        "Airdrop configuration must enable at least one pool (sapling/orchard)"
+    );
+
+    ensure!(
+        !(config_has_sapling && sapling_snapshot_nullifiers.is_none()),
+        "Airdrop configuration enables Sapling, but --sapling-snapshot-nullifiers is missing"
+    );
+    ensure!(
+        config_has_sapling || sapling_snapshot_nullifiers.is_none(),
+        "Sapling snapshot file was provided, but configuration has no sapling pool"
+    );
+
+    ensure!(
+        !(config_has_orchard && orchard_snapshot_nullifiers.is_none()),
+        "Airdrop configuration enables Orchard, but --orchard-snapshot-nullifiers is missing"
+    );
+    ensure!(
+        config_has_orchard || orchard_snapshot_nullifiers.is_none(),
+        "Orchard snapshot file was provided, but configuration has no orchard pool"
+    );
+
+    Ok(())
+}
+
 /// Scan the blockchain for user notes within the snapshot range.
 #[instrument(skip_all)]
 async fn find_user_notes(
-    config: &CommonConfig,
+    lightwalletd_url: &str,
+    network: Network,
+    snapshot_height: u64,
     ufvk: UnifiedFullViewingKey,
     birthday_height: u64,
 ) -> eyre::Result<AccountNotesVisitor> {
     ensure!(
-        birthday_height <= *config.snapshot.end(),
-        "Birthday height cannot be past the end of the snapshot range"
+        birthday_height <= snapshot_height,
+        "Birthday height cannot be past snapshot height"
     );
 
     let lightwalletd_url =
-        Uri::from_str(&config.lightwalletd_url).context("lightwalletd URL is required")?;
+        Uri::from_str(lightwalletd_url).context("lightwalletd URL is required")?;
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
 
     // NOTE: We are interested at tree state from the point that the account could have notes
@@ -126,20 +180,14 @@ async fn find_user_notes(
     // Initialize visitor from tree state
     let visitor = AccountNotesVisitor::from_tree_state(&tree_state)?;
 
-    let scan_range = RangeInclusive::new(birthday_height, *config.snapshot.end());
+    let scan_range = RangeInclusive::new(birthday_height, snapshot_height);
 
     info!("Scanning for user notes");
     let initial_metadata = BlockScanner::parse_tree_state(&tree_state)?;
 
     // Use channel-based scanning to keep non-Send BlockScanner off async tasks
     let (visitor, _final_metadata) = lightwalletd
-        .scan_blocks_spawned(
-            ufvk,
-            config.network,
-            visitor,
-            &scan_range,
-            Some(initial_metadata),
-        )
+        .scan_blocks_spawned(ufvk, network, visitor, &scan_range, Some(initial_metadata))
         .await?;
 
     info!(
@@ -229,18 +277,25 @@ fn generate_claims<M: NoteMetadata>(
 /// Processes claims for any pool type implementing `PoolProcessor`.
 #[instrument(skip_all, fields(pool_name = P::POOL_NAME))]
 async fn process_pool_claims<P: PoolProcessor>(
+    pool_enabled_in_config: bool,
     visitor: &AccountNotesVisitor,
     viewing_keys: &ViewingKeys,
     airdrop_config: &AirdropConfiguration,
     snapshot_nullifiers: Option<PathBuf>,
 ) -> eyre::Result<PoolClaimResult<P::PrivateInputs>> {
-    let Some(snapshot_nullifiers) = snapshot_nullifiers else {
-        warn!("No snapshot nullifiers provided");
+    if !pool_enabled_in_config {
         return Ok(PoolClaimResult::empty());
+    }
+
+    let Some(snapshot_nullifiers) = snapshot_nullifiers else {
+        return Err(eyre::eyre!(
+            "{} snapshot nullifiers path is required by the airdrop configuration",
+            P::POOL_NAME
+        ));
     };
 
     let Some(notes) = P::collect_notes(visitor, viewing_keys, airdrop_config)? else {
-        warn!("No viewing key available");
+        warn!("UFVK has no {} viewing key; skipping", P::POOL_NAME);
         return Ok(PoolClaimResult::empty());
     };
 
@@ -250,8 +305,14 @@ async fn process_pool_claims<P: PoolProcessor>(
 
     // Verify merkle root
     let anchor = pool_data.tree.root().to_bytes();
+    let Some(expected_root) = P::expected_root(airdrop_config) else {
+        return Err(eyre::eyre!(
+            "{} pool is unexpectedly missing in the airdrop configuration",
+            P::POOL_NAME
+        ));
+    };
     ensure!(
-        P::expected_root(airdrop_config) == anchor,
+        expected_root == anchor,
         "{} merkle root mismatch with airdrop configuration",
         P::POOL_NAME
     );

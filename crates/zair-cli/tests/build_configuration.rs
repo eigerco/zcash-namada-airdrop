@@ -10,7 +10,7 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::{Value, json};
 use tempfile::tempdir;
 use zair_core::base::ReverseBytes;
-use zair_core::schema::config::AirdropConfiguration;
+use zair_core::schema::config::{AirdropConfiguration, AirdropNetwork};
 
 fn read_cookie() -> eyre::Result<String> {
     let cookie_path = dirs::cache_dir()
@@ -55,8 +55,7 @@ fn test_build_airdrop_configuration() {
     // Execute the `zair build-config` subcommand
     let mut cmd = cargo_bin_cmd!("zair");
 
-    let snapshot_start_height = 3_743_871_u64;
-    let snapshot_end_height = 3_743_871_u64;
+    let snapshot_height = 3_743_871_u64;
 
     cmd.args([
         "build-config",
@@ -64,8 +63,8 @@ fn test_build_airdrop_configuration() {
         "testnet",
         "--lightwalletd-url",
         LIGHTWALLETD_URL,
-        "--snapshot",
-        format!("{snapshot_start_height}..={snapshot_end_height}").as_str(),
+        "--snapshot-height",
+        format!("{snapshot_height}").as_str(),
         "--configuration-output-file",
         output_config_path
             .to_str()
@@ -93,7 +92,7 @@ fn test_build_airdrop_configuration() {
     // Fetch expected note commitment roots from the chain via RPC, to compare against
     // the generated configuration
     let cookie = read_cookie().expect("Failed to read cookie");
-    let result = get_tree_state(RPC_URL, &cookie, snapshot_end_height + 1)
+    let result = get_tree_state(RPC_URL, &cookie, snapshot_height + 1)
         .expect("Failed to get tree state from rpc");
 
     // Sanitice the rpc response and extract the expected anchors
@@ -119,19 +118,42 @@ fn test_build_airdrop_configuration() {
 
     // Compare the generated configuration's note commitment roots against the expected roots
     assert_eq!(
-        configuration.note_commitment_tree_anchors.sapling, expected_sapling_anchor,
+        configuration
+            .sapling
+            .as_ref()
+            .expect("sapling should be present")
+            .note_commitment_root,
+        expected_sapling_anchor,
         "Sapling note commitment root does not match expected value"
     );
 
     assert_eq!(
-        configuration.note_commitment_tree_anchors.orchard, expected_orchard_anchor,
+        configuration
+            .orchard
+            .as_ref()
+            .expect("orchard should be present")
+            .note_commitment_root,
+        expected_orchard_anchor,
         "Orchard note commitment root does not match expected value"
     );
 
+    assert_eq!(configuration.version, 1);
+    assert_eq!(configuration.network, AirdropNetwork::Testnet);
+    assert_eq!(configuration.snapshot_height, snapshot_height);
     assert_eq!(
-        configuration.hiding_factor.sapling.personalization,
-        "MASP_alt"
+        configuration
+            .sapling
+            .as_ref()
+            .expect("sapling should be present")
+            .target_id,
+        "ZAIRTEST"
     );
-    assert_eq!(configuration.hiding_factor.orchard.domain, "MASP:Airdrop");
-    assert_eq!(configuration.hiding_factor.orchard.tag, "K");
+    assert_eq!(
+        configuration
+            .orchard
+            .as_ref()
+            .expect("orchard should be present")
+            .target_id,
+        "ZAIRTEST:Orchard"
+    );
 }

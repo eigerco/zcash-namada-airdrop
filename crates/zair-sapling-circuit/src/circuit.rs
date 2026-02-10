@@ -23,7 +23,7 @@ use crate::gadgets::enforce_less_than;
 
 /// Personalization for the hiding nullifier (airdrop-specific).
 /// This is used to derive a nullifier that doesn't reveal the Zcash nullifier.
-pub const HIDING_NF_PERSONALIZATION: &[u8; 8] = b"MASP_alt";
+pub const HIDING_NF_PERSONALIZATION: &[u8; 8] = b"ZAIRTEST";
 
 /// The opening (value and randomness) of a Sapling value commitment.
 #[derive(Clone)]

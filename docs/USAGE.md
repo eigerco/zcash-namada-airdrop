@@ -52,9 +52,12 @@ Run `build-config` to:
 
 ```bash
 zair build-config \
-  --snapshot 280000..=3743871 \
+  --snapshot-height 3743871 \
   --network testnet \
+  --pool both \
   --lightwalletd-url https://testnet.zec.rocks:443 \
+  --sapling-target-id ZAIRTEST \
+  --orchard-target-id ZAIRTEST:Orchard \
   --configuration-output-file airdrop_configuration.json \
   --sapling-snapshot-nullifiers sapling-nullifiers-testnet.bin \
   --orchard-snapshot-nullifiers orchard-nullifiers-testnet.bin
@@ -68,14 +71,17 @@ This produces:
 
 **Parameters of `build-config` explained:**
 
-| Parameter                       | Description                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| `--network`                     | Network to use (`mainnet` or `testnet`). Default: `mainnet`                           |
-| `--snapshot`                    | Block height range for the airdrop snapshot (e.g., `280000..=3743871`)                |
-| `--lightwalletd-url`            | URL of a lightwalletd server to fetch nullifiers from                                 |
-| `--configuration-output-file`   | Output path for the airdrop configuration JSON. Default: `airdrop_configuration.json` |
-| `--sapling-snapshot-nullifiers` | Output path for Sapling nullifiers file. Default: `sapling-snapshot-nullifiers.bin`   |
-| `--orchard-snapshot-nullifiers` | Output path for Orchard nullifiers file. Default: `orchard-snapshot-nullifiers.bin`   |
+| Parameter                       | Description                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--network`                     | Network to use (`mainnet` or `testnet`). Default: `mainnet`                                                                     |
+| `--snapshot-height`             | Snapshot block height (inclusive)                                                                                               |
+| `--pool`                        | Pool selection: `sapling`, `orchard`, or `both` (default)                                                                       |
+| `--lightwalletd-url`            | (Optional) URL of a lightwalletd server. Defaults: `https://zec.rocks:443` (mainnet), `https://testnet.zec.rocks:443` (testnet) |
+| `--sapling-target-id`           | Sapling target id for hiding nullifier derivation (must be exactly 8 bytes)                                                     |
+| `--orchard-target-id`           | Orchard target id for hiding nullifier derivation (must be <= 32 bytes)                                                         |
+| `--configuration-output-file`   | Output path for the airdrop configuration JSON. Default: `airdrop_configuration.json`                                           |
+| `--sapling-snapshot-nullifiers` | Output path for Sapling nullifiers file. Default: `sapling-snapshot-nullifiers.bin`                                             |
+| `--orchard-snapshot-nullifiers` | Output path for Orchard nullifiers file. Default: `orchard-snapshot-nullifiers.bin`                                             |
 
 > **For organizers**: Run this to generate the official Merkle roots and publish them along with the snapshot files.
 >
@@ -141,8 +147,6 @@ Download the snapshot files published by the airdrop organizer, then run `claim-
 
 ```bash
 zair claim-prepare \
-  --network testnet \
-  --snapshot 280000..=3743871 \
   --lightwalletd-url https://testnet.zec.rocks:443 \
   --sapling-snapshot-nullifiers sapling-nullifiers-testnet.bin \
   --orchard-snapshot-nullifiers orchard-nullifiers-testnet.bin \
@@ -161,17 +165,15 @@ This command will:
 
 **Parameters of `claim-prepare` explained:**
 
-| Parameter                       | Description                                                  |
-| ------------------------------- | ------------------------------------------------------------ |
-| `--network`                     | Network to use (`mainnet` or `testnet`)                      |
-| `--snapshot`                    | Block height range for the airdrop snapshot                  |
-| `--lightwalletd-url`            | URL of a lightwalletd server to scan the chain               |
-| `--sapling-snapshot-nullifiers` | Path to the Sapling nullifiers snapshot file                 |
-| `--orchard-snapshot-nullifiers` | Path to the Orchard nullifiers snapshot file                 |
-| `--unified-full-viewing-key`    | Your Unified Full Viewing Key in Bech32 format               |
-| `--birthday-height`             | The block height when your wallet was created (optimization) |
-| `--airdrop-claims-output-file`  | Output file for your claim proofs                            |
-| `--airdrop-configuration-file`  | (Optional) Airdrop configuration JSON to verify Merkle roots |
+| Parameter                       | Description                                                                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--lightwalletd-url`            | (Optional) URL of a lightwalletd server. Defaults by config network (`mainnet` => `https://zec.rocks:443`, `testnet` => `https://testnet.zec.rocks:443`) |
+| `--sapling-snapshot-nullifiers` | Path to the Sapling nullifiers snapshot file                                                                                                             |
+| `--orchard-snapshot-nullifiers` | Path to the Orchard nullifiers snapshot file                                                                                                             |
+| `--unified-full-viewing-key`    | Your Unified Full Viewing Key in Bech32 format                                                                                                           |
+| `--birthday-height`             | The block height when your wallet was created (optimization)                                                                                             |
+| `--airdrop-claims-output-file`  | Output file for your claim inputs                                                                                                                        |
+| `--airdrop-configuration-file`  | (Optional) Airdrop configuration JSON to verify Merkle roots                                                                                             |
 
 > **Recommended**: Provide the `--airdrop-configuration-file` from the official airdrop to verify your snapshot files match the expected Merkle roots. This ensures your generated proofs will be valid.
 
@@ -261,20 +263,23 @@ This prints the JSON schema describing the structure of the airdrop configuratio
 
 Instead of passing arguments on the command line, you can use environment variables or a `.env` file:
 
-| Variable                      | Description                                                            |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| `AIRDROP_CLAIMS_FILE`         | Path for claims JSON (output of `claim-prepare`, input to `prove`)     |
-| `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys                          |
-| `CLAIM_PROOFS_FILE`           | Path for proofs JSON (output of `prove`, input to `verify`)            |
-| `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON                             |
-| `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL                                         |
-| `NETWORK`                     | Network to use (`mainnet` or `testnet`)                                |
-| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                                        |
-| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                                   |
-| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                                        |
-| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex                     |
-| `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)                |
-| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                                 |
+| Variable                      | Description                                                        |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `AIRDROP_CLAIMS_FILE`         | Path for claims JSON (output of `claim-prepare`, input to `prove`) |
+| `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys                      |
+| `CLAIM_PROOFS_FILE`           | Path for proofs JSON (output of `prove`, input to `verify`)        |
+| `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON                         |
+| `LIGHTWALLETD_URL`            | Optional lightwalletd gRPC endpoint URL override                   |
+| `NETWORK`                     | Network to use (`mainnet` or `testnet`)                            |
+| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                                    |
+| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                               |
+| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                                    |
+| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex                 |
+| `SNAPSHOT_HEIGHT`             | Snapshot block height (inclusive)                                  |
+| `POOL`                        | Pool selection for build-config (`sapling`, `orchard`, `both`)     |
+| `SAPLING_TARGET_ID`           | Sapling target id (must be exactly 8 bytes)                        |
+| `ORCHARD_TARGET_ID`           | Orchard target id (must be at most 32 bytes)                       |
+| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                             |
 
 ## Troubleshooting
 
@@ -286,7 +291,7 @@ Instead of passing arguments on the command line, you can use environment variab
 
 ### Pool not active at snapshot height
 
-Ensure your snapshot range starts after the pool activation height:
+Ensure your snapshot height is at or after the pool activation height:
 
 | Pool    | Network | Activation Height |
 | ------- | ------- | ----------------- |
@@ -295,4 +300,4 @@ Ensure your snapshot range starts after the pool activation height:
 | Orchard | Mainnet | 1,687,104         |
 | Orchard | Testnet | 1,842,420         |
 
-For example, to include Orchard notes on mainnet, your snapshot must start at or after block 1,687,104.
+For example, to include Orchard notes on mainnet, your snapshot height must be at or after block 1,687,104.

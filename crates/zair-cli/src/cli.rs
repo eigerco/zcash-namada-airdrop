@@ -1,13 +1,10 @@
 //! Command-line interface for the `zair` CLI application.
 
-use std::ops::RangeInclusive;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use clap::Parser;
 use eyre::{Result, ensure, eyre};
-use zair_core::schema::config::{HidingFactor, OrchardHidingFactor, SaplingHidingFactor};
-use zair_sdk::common::CommonConfig;
+use zair_sdk::common::{CommonConfig, PoolSelection};
 use zcash_protocol::consensus::Network;
 
 /// Command-line interface definition
@@ -25,9 +22,12 @@ pub struct Cli {
 pub enum Commands {
     /// Build a snapshot of nullifiers from a source
     BuildConfig {
-        /// Common configuration arguments
+        /// Build-config specific arguments.
         #[command(flatten)]
-        config: CommonArgs,
+        config: BuildConfigArgs,
+        /// Pool to include in the exported configuration.
+        #[arg(long, env = "POOL", default_value = "both", value_parser = parse_pool_selection)]
+        pool: PoolSelection,
         /// Configuration output file
         #[arg(
             long,
@@ -49,9 +49,22 @@ pub enum Commands {
             default_value = "orchard-snapshot-nullifiers.bin"
         )]
         orchard_snapshot_nullifiers: PathBuf,
-        /// Hiding factor arguments for nullifier derivation
-        #[command(flatten)]
-        hiding_factor: HidingFactorArgs,
+        /// Sapling `target_id` used for airdrop nullifier derivation. Must be exactly 8 bytes.
+        #[arg(
+            long,
+            env = "SAPLING_TARGET_ID",
+            default_value = "ZAIRTEST",
+            value_parser = parse_sapling_target_id
+        )]
+        sapling_target_id: String,
+        /// Orchard `target_id` used for airdrop nullifier derivation. Must be <= 32 bytes.
+        #[arg(
+            long,
+            env = "ORCHARD_TARGET_ID",
+            default_value = "ZAIRTEST:Orchard",
+            value_parser = parse_orchard_target_id
+        )]
+        orchard_target_id: String,
     },
     /// Prepare the airdrop claim.
     ///
@@ -60,9 +73,10 @@ pub enum Commands {
     /// 3. Output the non-membership proofs.
     #[command(verbatim_doc_comment)]
     ClaimPrepare {
-        /// Common configuration arguments
-        #[command(flatten)]
-        config: CommonArgs,
+        /// Optional lightwalletd gRPC endpoint URL override.
+        #[arg(long, env = "LIGHTWALLETD_URL")]
+        lightwalletd_url: Option<String>,
+
         /// Sapling snapshot nullifiers. This file contains the sapling nullifiers of the snapshot.
         /// It's used to recreate the Merkle tree of the snapshot for sapling notes.
         #[arg(long, env = "SAPLING_SNAPSHOT_NULLIFIERS")]
@@ -163,83 +177,30 @@ pub enum Commands {
     },
 }
 
-/// Common arguments for both commands
+/// Common arguments for build-config.
 #[derive(Debug, clap::Args)]
-pub struct CommonArgs {
+pub struct BuildConfigArgs {
     /// Network to use (mainnet or testnet)
     #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
     pub network: Network,
 
-    /// Block range for the snapshot (e.g., 1000000..=1100000). Range is inclusive.
-    #[arg(long, env = "SNAPSHOT", value_parser = parse_range)]
-    pub snapshot: RangeInclusive<u64>,
+    /// Snapshot block height (inclusive).
+    #[arg(long, env = "SNAPSHOT_HEIGHT")]
+    pub snapshot_height: u64,
 
-    /// Lightwalletd gRPC endpoint URL
+    /// Optional lightwalletd gRPC endpoint URL override.
     #[arg(long, env = "LIGHTWALLETD_URL")]
-    pub lightwalletd_url: String,
+    pub lightwalletd_url: Option<String>,
 }
 
-impl From<CommonArgs> for CommonConfig {
-    fn from(args: CommonArgs) -> Self {
+impl From<BuildConfigArgs> for CommonConfig {
+    fn from(args: BuildConfigArgs) -> Self {
         Self {
             network: args.network,
-            snapshot: args.snapshot,
+            snapshot_height: args.snapshot_height,
             lightwalletd_url: args.lightwalletd_url,
         }
     }
-}
-
-/// Arguments for hiding nullifier derivation
-#[derive(Debug, Clone, clap::Args)]
-pub struct HidingFactorArgs {
-    /// Sapling personalization bytes for hiding nullifier
-    #[arg(
-        long,
-        env = "SAPLING_PERSONALIZATION",
-        default_value = "MASP_alt",
-        value_parser = parse_sapling_personalization
-    )]
-    sapling_personalization: Bytes,
-
-    /// Orchard domain separator for hiding nullifier
-    #[arg(long, env = "ORCHARD_HIDING_DOMAIN", default_value = "MASP:Airdrop")]
-    orchard_hiding_domain: String,
-
-    /// Orchard tag bytes for hiding nullifier
-    #[arg(long, env = "ORCHARD_HIDING_TAG", default_value = "K")]
-    orchard_hiding_tag: Bytes,
-}
-
-impl TryFrom<HidingFactorArgs> for HidingFactor {
-    type Error = eyre::ErrReport;
-
-    fn try_from(args: HidingFactorArgs) -> Result<Self, Self::Error> {
-        Ok(Self {
-            sapling: SaplingHidingFactor {
-                personalization: String::from_utf8(args.sapling_personalization.0)?,
-            },
-            orchard: OrchardHidingFactor {
-                domain: args.orchard_hiding_domain.clone(),
-                tag: String::from_utf8(args.orchard_hiding_tag.0)?,
-            },
-        })
-    }
-}
-
-fn parse_range(s: &str) -> Result<RangeInclusive<u64>> {
-    let (start, end) = s
-        .split_once("..=")
-        .ok_or_else(|| eyre!("Invalid range format. Use START..=END"))?;
-
-    let start = start.parse::<u64>()?;
-    let end = end.parse::<u64>()?;
-
-    ensure!(
-        start <= end,
-        "Range start must be less than or equal to end"
-    );
-
-    Ok(start..=end)
 }
 
 fn parse_network(s: &str) -> Result<Network> {
@@ -252,60 +213,30 @@ fn parse_network(s: &str) -> Result<Network> {
     }
 }
 
-/// Newtype wrapper for byte arrays parsed from CLI strings.
-/// Clap interprets `Vec<u8>` as multiple u8 values, so we need this wrapper.
-#[derive(Debug, Clone)]
-struct Bytes(pub Vec<u8>);
-
-impl FromStr for Bytes {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self(s.as_bytes().to_vec()))
+fn parse_pool_selection(s: &str) -> Result<PoolSelection> {
+    match s {
+        "sapling" => Ok(PoolSelection::Sapling),
+        "orchard" => Ok(PoolSelection::Orchard),
+        "both" => Ok(PoolSelection::Both),
+        other => Err(eyre!(
+            "Invalid pool: {other}. Expected 'sapling', 'orchard', or 'both'."
+        )),
     }
 }
 
-fn parse_sapling_personalization(s: &str) -> Result<Bytes> {
-    let bytes = Bytes(s.as_bytes().to_vec());
-    ensure!(
-        bytes.0.len() <= 8,
-        "Sapling personalization must be upto 8 bytes"
-    );
+fn parse_sapling_target_id(s: &str) -> Result<String> {
+    ensure!(s.len() == 8, "Sapling target_id must be exactly 8 bytes");
+    Ok(s.to_string())
+}
 
-    Ok(bytes)
+fn parse_orchard_target_id(s: &str) -> Result<String> {
+    ensure!(s.len() <= 32, "Orchard target_id must be at most 32 bytes");
+    Ok(s.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn valid_parse_range() {
-        let range = parse_range("1000000..=1100000");
-        let expected = 1_000_000_u64..=1_100_000_u64;
-        assert!(matches!(range, Ok(r) if r == expected));
-    }
-
-    #[test]
-    fn parse_range_invalid_cases() {
-        let result = parse_range("100-200");
-        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid range format")));
-
-        let result = parse_range("abc..=200");
-        assert!(
-            matches!(result, Err(err) if err.to_string().contains("invalid digit found in string"))
-        );
-
-        let result = parse_range("100..=abc");
-        assert!(
-            matches!(result, Err(err) if err.to_string().contains("invalid digit found in string"))
-        );
-
-        let result = parse_range("200..=100");
-        assert!(
-            matches!(result, Err(err) if err.to_string().contains("Range start must be less than or equal to end"))
-        );
-    }
 
     #[test]
     fn network_parse() {
@@ -314,50 +245,34 @@ mod tests {
 
         let network = parse_network("testnet").expect("Failed to parse testnet");
         assert_eq!(network, Network::TestNetwork);
+
+        let network = parse_network("invalid_network");
+        assert!(network.is_err());
     }
 
     #[test]
-    fn network_parse_invalid() {
-        let result = parse_network("devnet");
-        assert!(matches!(result, Err(err) if err.to_string().contains("Invalid network")));
+    fn pool_selection_parse() {
+        assert!(matches!(
+            parse_pool_selection("sapling").expect("sapling should parse"),
+            PoolSelection::Sapling
+        ));
+        assert!(matches!(
+            parse_pool_selection("orchard").expect("orchard should parse"),
+            PoolSelection::Orchard
+        ));
+        assert!(matches!(
+            parse_pool_selection("both").expect("both should parse"),
+            PoolSelection::Both
+        ));
+        assert!(parse_pool_selection("nope").is_err());
     }
 
     #[test]
-    fn str_to_bytes() {
-        let input = "MASP_alt";
-        let bytes: Bytes = input.parse().unwrap();
-        assert_eq!(bytes.0, b"MASP_alt".to_vec());
-    }
+    fn target_id_validation() {
+        assert!(parse_sapling_target_id("ZAIRTEST").is_ok());
+        assert!(parse_sapling_target_id("short").is_err());
 
-    // HidingFactorArgs
-    #[test]
-    fn hiding_factor_args_to_hiding_factor() {
-        let args = HidingFactorArgs {
-            sapling_personalization: Bytes(b"MASP_alt".to_vec()),
-            orchard_hiding_domain: "MASP:Airdrop".to_string(),
-            orchard_hiding_tag: Bytes(b"K".to_vec()),
-        };
-
-        let hiding_factor: HidingFactor =
-            args.try_into().expect("Failed to convert to HidingFactor");
-        assert_eq!(
-            hiding_factor.sapling.personalization,
-            String::from_str("MASP_alt").expect("Failed to convert to string")
-        );
-        assert_eq!(hiding_factor.orchard.domain, "MASP:Airdrop".to_string());
-        assert_eq!(
-            hiding_factor.orchard.tag,
-            String::from_str("K").expect("Failed to convert to string")
-        );
-    }
-
-    #[test]
-    fn validate_parse_sapling_personalization() {
-        let res = parse_sapling_personalization("sapling")
-            .expect("Failed to parse sapling personalization");
-        assert_eq!(res.0, b"sapling".to_vec());
-
-        let res = parse_sapling_personalization("sapling_sapling");
-        assert!(res.is_err());
+        assert!(parse_orchard_target_id("ZAIRTEST:Orchard").is_ok());
+        assert!(parse_orchard_target_id(&"x".repeat(33)).is_err());
     }
 }

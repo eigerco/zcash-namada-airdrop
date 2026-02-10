@@ -50,6 +50,7 @@ group = "0.13"
 jubjub = "0.10"
 ureq = "3.1.4"
 hex = "0.4"
+hex-literal = "0.4.1"
 http = "1.4.0"
 incrementalmerkletree = { version = "0.8.2" }
 itertools = "0.14.0"
