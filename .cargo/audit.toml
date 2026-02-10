@@ -1,0 +1,5 @@
+[advisories]
+ignore = [
+  # Awaiting upstream dependency update (zcash_client_backend)
+  "RUSTSEC-2026-0009",
+]
