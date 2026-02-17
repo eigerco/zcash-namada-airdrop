@@ -12,6 +12,7 @@ use zair_nonmembership::NON_MEMBERSHIP_TREE_DEPTH;
 use zair_sapling_circuit::Claim;
 
 use crate::prover::proving::ClaimParameters;
+use crate::types::ValueCommitmentScheme;
 
 /// Errors that can occur during parameter operations.
 #[derive(Debug, thiserror::Error)]
@@ -41,7 +42,9 @@ pub enum ParameterError {
 ///
 /// # Errors
 /// Returns an error if parameter generation fails.
-pub fn generate_parameters() -> Result<ClaimParameters, ParameterError> {
+pub fn generate_parameters(
+    value_commitment_scheme: ValueCommitmentScheme,
+) -> Result<ClaimParameters, ParameterError> {
     let mut rng = OsRng;
 
     // Create empty circuit for parameter generation
@@ -57,6 +60,8 @@ pub fn generate_parameters() -> Result<ClaimParameters, ParameterError> {
         nm_right_nf: None,
         nm_merkle_path: vec![None; usize::from(NON_MEMBERSHIP_TREE_DEPTH)],
         nm_anchor: None,
+        value_commitment_scheme: value_commitment_scheme.into(),
+        rcv_sha256: None,
     };
 
     let params = generate_random_parameters::<Bls12, _, _>(empty_circuit, &mut rng)

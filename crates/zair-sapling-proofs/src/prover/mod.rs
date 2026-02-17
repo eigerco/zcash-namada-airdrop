@@ -6,8 +6,8 @@ mod convenience;
 mod proving;
 
 pub use builder::{ParameterError, generate_parameters, load_parameters, save_parameters};
-pub use convenience::generate_claim_proof;
+pub use convenience::{generate_claim_proof, generate_claim_proof_with_secrets};
 pub use proving::ClaimParameters;
 
 pub use crate::error::ClaimProofError;
-pub use crate::types::ClaimProofInputs;
+pub use crate::types::{ClaimProofInputs, ClaimProofSecretMaterial, ValueCommitmentScheme};

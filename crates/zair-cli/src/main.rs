@@ -3,11 +3,10 @@
 mod cli;
 
 use clap::Parser as _;
-use cli::{Cli, Commands};
-use zair_sdk::commands::{
-    airdrop_claim, airdrop_configuration_schema, build_airdrop_configuration,
-};
-use zcash_keys::keys::UnifiedFullViewingKey;
+#[cfg(feature = "prove")]
+use cli::SetupCommands;
+use cli::{ClaimCommands, Cli, Commands, ConfigCommands, VerifyCommands};
+use zair_sdk::commands::{airdrop_claim, build_airdrop_configuration};
 
 fn init_tracing() -> eyre::Result<()> {
     #[cfg(feature = "tokio-console")]
@@ -43,6 +42,10 @@ fn init_tracing() -> eyre::Result<()> {
 }
 
 #[tokio::main(flavor = "multi_thread")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Top-level CLI dispatch keeps all command wiring in one place"
+)]
 async fn main() -> eyre::Result<()> {
     // Initialize rustls crypto provider (required for TLS connections)
     rustls::crypto::ring::default_provider()
@@ -57,72 +60,106 @@ async fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     let res = match cli.command {
-        Commands::BuildConfig {
-            config,
-            configuration_output_file,
-            sapling_snapshot_nullifiers,
-            orchard_snapshot_nullifiers,
-            hiding_factor,
-        } => {
-            build_airdrop_configuration(
-                config.into(),
-                configuration_output_file,
-                sapling_snapshot_nullifiers,
-                orchard_snapshot_nullifiers,
-                hiding_factor.try_into()?,
-            )
-            .await
-        }
-        Commands::ClaimPrepare {
-            config,
-            sapling_snapshot_nullifiers,
-            orchard_snapshot_nullifiers,
-            unified_full_viewing_key,
-            birthday_height,
-            airdrop_claims_output_file,
-            airdrop_configuration_file,
-        } => {
-            let ufvk = UnifiedFullViewingKey::decode(&config.network, &unified_full_viewing_key)
-                .map_err(|e| eyre::eyre!("Failed to decode Unified Full Viewing Key: {:?}", e))?;
-
-            airdrop_claim(
-                config.into(),
-                sapling_snapshot_nullifiers,
-                orchard_snapshot_nullifiers,
-                ufvk,
-                birthday_height,
-                airdrop_claims_output_file,
-                airdrop_configuration_file,
-            )
-            .await
-        }
-        Commands::ConfigSchema => airdrop_configuration_schema(),
         #[cfg(feature = "prove")]
-        Commands::Prove {
-            claim_inputs_file,
-            proofs_output_file,
-            seed_file,
-            network,
-            proving_key_file,
-        } => {
-            zair_sdk::commands::generate_claim_proofs(
-                claim_inputs_file,
-                proofs_output_file,
-                seed_file,
-                network,
-                proving_key_file,
-            )
-            .await
-        }
-        #[cfg(feature = "prove")]
-        Commands::SetupLocal {
-            proving_key_file,
-            verifying_key_file,
-        } => zair_sdk::commands::generate_claim_params(proving_key_file, verifying_key_file).await,
-        Commands::Verify {
-            proofs_file,
-            verifying_key_file,
-        } => zair_sdk::commands::verify_claim_sapling_proof(proofs_file, verifying_key_file).await,
+        Commands::Setup { command } => match command {
+            SetupCommands::Local {
+                scheme,
+                pk_out,
+                vk_out,
+            } => zair_sdk::commands::generate_claim_params(pk_out, vk_out, scheme).await,
+        },
+        Commands::Config { command } => match command {
+            ConfigCommands::Build { args } => {
+                build_airdrop_configuration(
+                    args.config.into(),
+                    args.pool,
+                    args.config_out,
+                    args.snapshot_out_sapling,
+                    args.snapshot_out_orchard,
+                    args.target_sapling,
+                    args.scheme_sapling,
+                    args.target_orchard,
+                    args.scheme_orchard,
+                )
+                .await
+            }
+        },
+        Commands::Claim { command } => match command {
+            #[cfg(feature = "prove")]
+            ClaimCommands::Run { args } => {
+                zair_sdk::commands::claim_run(
+                    args.lightwalletd,
+                    args.snapshot_sapling,
+                    args.snapshot_orchard,
+                    args.birthday,
+                    args.claims_out,
+                    args.proofs_out,
+                    args.secrets_out,
+                    args.submission_out,
+                    args.seed,
+                    args.account,
+                    args.pk,
+                    args.msg,
+                    args.config,
+                )
+                .await
+            }
+            ClaimCommands::Prepare { args } => {
+                airdrop_claim(
+                    args.lightwalletd,
+                    args.snapshot_sapling,
+                    args.snapshot_orchard,
+                    args.ufvk,
+                    args.birthday,
+                    args.claims_out,
+                    args.config,
+                )
+                .await
+            }
+            #[cfg(feature = "prove")]
+            ClaimCommands::Prove { args } => {
+                zair_sdk::commands::generate_claim_proofs(
+                    args.claims_in,
+                    args.proofs_out,
+                    args.seed,
+                    args.account,
+                    args.pk,
+                    args.secrets_out,
+                    args.config,
+                )
+                .await
+            }
+            ClaimCommands::Sign { args } => {
+                zair_sdk::commands::sign_claim_submission(
+                    args.proofs_in,
+                    args.secrets_in,
+                    args.seed,
+                    args.account,
+                    args.config,
+                    args.msg,
+                    args.submission_out,
+                )
+                .await
+            }
+        },
+        Commands::Verify { command } => match command {
+            VerifyCommands::Run { args } => {
+                zair_sdk::commands::verify_run(args.vk, args.submission_in, args.msg, args.config)
+                    .await
+            }
+            VerifyCommands::Proof { args } => {
+                zair_sdk::commands::verify_claim_sapling_proof(args.proofs_in, args.vk, args.config)
+                    .await
+            }
+            VerifyCommands::Signature { args } => {
+                zair_sdk::commands::verify_claim_submission_signature(
+                    args.submission_in,
+                    args.msg,
+                    args.config,
+                )
+                .await
+            }
+        },
     };
 
     if let Err(e) = res {

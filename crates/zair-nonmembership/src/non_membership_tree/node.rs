@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 
 use incrementalmerkletree::{Hashable, Level};
 use sapling::merkle_hash;
+use sapling::pedersen_hash::{Personalization, pedersen_hash};
 use zair_core::base::{NULLIFIER_SIZE, Nullifier};
 
 /// Level used for hashing nullifier pairs into leaves.
@@ -59,8 +60,41 @@ impl NonMembershipNode {
     /// from internal node hashes while keeping the hash ZK-circuit compatible.
     #[must_use]
     pub fn leaf_from_nullifiers(left_nf: &Nullifier, right_nf: &Nullifier) -> Self {
-        Self(merkle_hash(usize::from(LEAF_HASH_LEVEL), left_nf, right_nf))
+        Self(gap_leaf_hash_full(left_nf, right_nf))
     }
+}
+
+/// Compute the non-membership leaf hash over the full 256 bits of each nullifier.
+///
+/// This matches the ZK circuit's `witness_bytes_as_bits` which produces 256 bits per
+/// 32-byte input. Using `sapling::merkle_hash` would truncate to 255 bits via
+/// `.take(Scalar::NUM_BITS)`, which is safe for field elements but not for raw nullifiers.
+#[must_use]
+fn gap_leaf_hash_full(left_nf: &Nullifier, right_nf: &Nullifier) -> [u8; 32] {
+    let bits = bytes_to_bits_le(left_nf.as_ref())
+        .into_iter()
+        .chain(bytes_to_bits_le(right_nf.as_ref()));
+
+    let subgroup_point = pedersen_hash(
+        Personalization::MerkleTree(usize::from(LEAF_HASH_LEVEL)),
+        bits,
+    );
+    jubjub::AffinePoint::from(jubjub::ExtendedPoint::from(subgroup_point))
+        .get_u()
+        .to_bytes()
+}
+
+/// Convert a 32-byte array to 256 boolean bits in little-endian order.
+#[must_use]
+fn bytes_to_bits_le(bytes: &[u8; 32]) -> [bool; 256] {
+    let mut bits = [false; 256];
+    for (byte_index, byte) in bytes.iter().enumerate() {
+        for bit_in_byte in 0..8 {
+            let idx = byte_index.saturating_mul(8).saturating_add(bit_in_byte);
+            bits[idx] = ((byte >> bit_in_byte) & 1) == 1;
+        }
+    }
+    bits
 }
 
 impl From<Nullifier> for NonMembershipNode {

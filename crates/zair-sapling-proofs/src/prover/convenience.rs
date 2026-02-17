@@ -10,15 +10,20 @@
 use ff::{Field, PrimeField};
 use group::Curve;
 use incrementalmerkletree::Position;
+use rand::RngCore;
 use rand::rngs::OsRng;
 use sapling::value::{NoteValue, ValueCommitTrapdoor};
 use sapling::{Diversifier, Note, PaymentAddress, ProofGenerationKey, Rseed};
+use sha2::{Digest as _, Sha256};
+use zair_sapling_circuit::circuit::HIDING_NF_PERSONALIZATION;
 
 use crate::error::ClaimProofError;
 use crate::prover::proving::{
     ClaimParameters, MerklePath, create_proof, encode_proof, prepare_circuit,
 };
-use crate::types::{ClaimProofInputs, ClaimProofOutput};
+use crate::types::{
+    ClaimProofInputs, ClaimProofOutput, ClaimProofSecretMaterial, ValueCommitmentScheme,
+};
 
 /// Compute the Zcash nullifier from note inputs (for debugging/verification).
 ///
@@ -53,6 +58,19 @@ pub fn bytes_less_than(a: &[u8; 32], b: &[u8; 32]) -> bool {
     false
 }
 
+#[must_use]
+fn value_commitment_sha256(value: u64, rcv_sha256: &[u8; 32]) -> [u8; 32] {
+    let mut preimage = [0u8; 48];
+    preimage[0..8].copy_from_slice(HIDING_NF_PERSONALIZATION);
+    preimage[8..16].copy_from_slice(&value.to_le_bytes());
+    preimage[16..48].copy_from_slice(rcv_sha256);
+
+    let digest = Sha256::digest(preimage);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
 /// Generate a claim proof from raw byte inputs.
 ///
 /// This is a convenience function that combines circuit preparation, proof creation,
@@ -70,6 +88,24 @@ pub fn generate_claim_proof(
     inputs: &ClaimProofInputs,
     proof_generation_key: &ProofGenerationKey,
 ) -> Result<ClaimProofOutput, ClaimProofError> {
+    let (proof, _) = generate_claim_proof_with_secrets(params, inputs, proof_generation_key)?;
+    Ok(proof)
+}
+
+/// Generate a claim proof and the local-only secret material used to build the value commitment.
+///
+/// # Errors
+/// Returns an error if any witness material is invalid, proof construction fails,
+/// or proof encoding/public-output extraction fails.
+#[allow(
+    clippy::too_many_lines,
+    reason = "This function performs end-to-end witness preparation and proving"
+)]
+pub fn generate_claim_proof_with_secrets(
+    params: &ClaimParameters,
+    inputs: &ClaimProofInputs,
+    proof_generation_key: &ProofGenerationKey,
+) -> Result<(ClaimProofOutput, ClaimProofSecretMaterial), ClaimProofError> {
     let mut rng = OsRng;
 
     // Parse inputs
@@ -128,20 +164,35 @@ pub fn generate_claim_proof(
         )));
     }
 
-    // Compute anchor from merkle path
-    let cmu = note.cmu();
-    let anchor = compute_anchor_from_path(&cmu.to_bytes(), &merkle_path)?;
+    let anchor = bls12_381::Scalar::from_bytes(&inputs.anchor)
+        .into_option()
+        .ok_or_else(|| {
+            ClaimProofError::ProofCreation(
+                "Invalid note-commitment anchor: not a valid scalar".to_string(),
+            )
+        })?;
 
     // Generate random values
     let alpha = jubjub::Fr::random(&mut rng);
     let rcv = ValueCommitTrapdoor::random(&mut rng);
+    let rcv_bytes = rcv.inner().to_repr();
 
-    // Compute nm_anchor from the non-membership inputs
-    let nm_anchor = compute_nm_anchor_from_path(
-        &inputs.nm_left_nf,
-        &inputs.nm_right_nf,
-        &inputs.nm_merkle_path,
-    )?;
+    let nm_anchor = bls12_381::Scalar::from_bytes(&inputs.nm_anchor)
+        .into_option()
+        .ok_or_else(|| {
+            ClaimProofError::ProofCreation(
+                "Invalid non-membership anchor: not a valid scalar".to_string(),
+            )
+        })?;
+
+    let mut rcv_sha256 = [0u8; 32];
+    let rcv_sha256 = match inputs.value_commitment_scheme {
+        ValueCommitmentScheme::Native => None,
+        ValueCommitmentScheme::Sha256 => {
+            rng.fill_bytes(&mut rcv_sha256);
+            Some(rcv_sha256)
+        }
+    };
 
     // Prepare the circuit
     let diversifier = Diversifier(inputs.diversifier);
@@ -158,6 +209,8 @@ pub fn generate_claim_proof(
         inputs.nm_right_nf,
         inputs.nm_merkle_path.clone(),
         nm_anchor,
+        inputs.value_commitment_scheme,
+        rcv_sha256,
     )?;
 
     // Create and encode the proof
@@ -179,15 +232,27 @@ pub fn generate_claim_proof(
     // Compute value commitment cv
     let cv = sapling::value::ValueCommitment::derive(value, rcv);
     let cv_bytes: [u8; 32] = cv.to_bytes();
-
-    Ok(ClaimProofOutput {
+    let proof_output = ClaimProofOutput {
         zkproof,
         rk: rk_bytes,
-        cv: cv_bytes,
-        anchor: anchor.to_bytes(),
+        cv: match inputs.value_commitment_scheme {
+            ValueCommitmentScheme::Native => Some(cv_bytes),
+            ValueCommitmentScheme::Sha256 => None,
+        },
+        cv_sha256: rcv_sha256.map(|r| value_commitment_sha256(inputs.value, &r)),
         hiding_nf: inputs.hiding_nf,
-        nm_anchor: nm_anchor.to_bytes(),
-    })
+    };
+
+    let secret_material = ClaimProofSecretMaterial {
+        alpha: alpha.to_repr(),
+        rcv: match inputs.value_commitment_scheme {
+            ValueCommitmentScheme::Native => Some(rcv_bytes),
+            ValueCommitmentScheme::Sha256 => None,
+        },
+        rcv_sha256,
+    };
+
+    Ok((proof_output, secret_material))
 }
 
 /// Compute the merkle root from a note commitment and merkle path.
@@ -196,6 +261,10 @@ pub fn generate_claim_proof(
 /// - Returns `ClaimProofError::InvalidCmu` if the note commitment bytes are not a valid scalar.
 /// - Returns `ClaimProofError::IntegerConversion` if the scalar bit count cannot be converted to
 ///   usize.
+#[allow(
+    dead_code,
+    reason = "Useful helper for debugging/testing root recomputation"
+)]
 pub fn compute_anchor_from_path(
     cmu_bytes: &[u8; 32],
     merkle_path: &MerklePath,
@@ -247,6 +316,10 @@ pub fn compute_anchor_from_path(
 ///   scalar.
 /// - Returns `ClaimProofError::IntegerConversion` if the scalar bit count cannot be converted to
 ///   usize.
+#[allow(
+    dead_code,
+    reason = "Useful helper for debugging/testing root recomputation"
+)]
 pub fn compute_nm_anchor_from_path(
     left_nf: &[u8; 32],
     right_nf: &[u8; 32],

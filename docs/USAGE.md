@@ -38,45 +38,56 @@ The `zair-cli` and `zair-sdk` crates use the `prove` feature to control proving 
 - **Without `prove`**: lighter verification-focused build.
 - **With `prove`** (default): includes proof generation and local parameter setup.
 
-In the CLI, `prove` and `setup-local` are only available when `prove` is enabled.
+In the CLI, `setup local`, `claim prove`, and `claim run` are only available when `prove` is enabled.
 
 ## Workflow
 
 ### Step 1: Build the Airdrop Snapshot
 
-Run `build-config` to:
+Run `config build` to:
 
 1. Fetch all nullifiers from the blockchain up to the snapshot height
 2. Build Merkle trees for Sapling and Orchard pools
 3. Export snapshot files and a configuration JSON with Merkle roots
 
 ```bash
-zair build-config \
-  --snapshot 280000..=3743871 \
+zair config build \
+  --height 3743871 \
   --network testnet \
-  --lightwalletd-url https://testnet.zec.rocks:443 \
-  --configuration-output-file airdrop_configuration.json \
-  --sapling-snapshot-nullifiers sapling-nullifiers-testnet.bin \
-  --orchard-snapshot-nullifiers orchard-nullifiers-testnet.bin
+  --pool both \
+  --lightwalletd https://testnet.zec.rocks:443 \
+  --target-sapling ZAIRTEST \
+  --scheme-sapling native \
+  --target-orchard ZAIRTEST:O \
+  --scheme-orchard native \
+  --config-out config.json \
+  --snapshot-out-sapling snapshot-sapling.bin \
+  --snapshot-out-orchard snapshot-orchard.bin
 ```
 
 This produces:
 
-- `airdrop_configuration.json` — Contains Merkle roots for verification
-- `sapling-nullifiers-testnet.bin` — Sapling pool snapshot nullifiers
-- `orchard-nullifiers-testnet.bin` — Orchard pool snapshot nullifiers
+- `config.json` — Contains Merkle roots for verification
+- `snapshot-sapling.bin` — Sapling pool snapshot nullifiers
+- `snapshot-orchard.bin` — Orchard pool snapshot nullifiers
 
-**Parameters of `build-config` explained:**
+**Parameters of `config build` explained:**
 
-| Parameter                       | Description                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| `--network`                     | Network to use (`mainnet` or `testnet`). Default: `mainnet`                           |
-| `--snapshot`                    | Block height range for the airdrop snapshot (e.g., `280000..=3743871`)                |
-| `--lightwalletd-url`            | URL of a lightwalletd server to fetch nullifiers from                                 |
-| `--configuration-output-file`   | Output path for the airdrop configuration JSON. Default: `airdrop_configuration.json` |
-| `--sapling-snapshot-nullifiers` | Output path for Sapling nullifiers file. Default: `sapling-snapshot-nullifiers.bin`   |
-| `--orchard-snapshot-nullifiers` | Output path for Orchard nullifiers file. Default: `orchard-snapshot-nullifiers.bin`   |
+| Parameter                | Description                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--network`              | Network to use (`mainnet` or `testnet`). Default: `mainnet`                                                                     |
+| `--height`               | Snapshot block height (inclusive)                                                                                               |
+| `--pool`                 | Pool selection: `sapling`, `orchard`, or `both` (default)                                                                       |
+| `--lightwalletd`         | (Optional) URL of a lightwalletd server. Defaults: `https://zec.rocks:443` (mainnet), `https://testnet.zec.rocks:443` (testnet) |
+| `--target-sapling`       | Sapling target id for hiding nullifier derivation (must be exactly 8 bytes)                                                     |
+| `--scheme-sapling`       | Sapling value commitment scheme (`native` or `sha256`)                                                                          |
+| `--target-orchard`       | Orchard target id for hiding nullifier derivation (must be <= 32 bytes)                                                         |
+| `--scheme-orchard`       | Orchard value commitment scheme (`native` or `sha256`)                                                                          |
+| `--config-out`           | Output path for the airdrop configuration JSON. Default: `config.json`                                                          |
+| `--snapshot-out-sapling` | Output path for Sapling nullifiers file. Default: `snapshot-sapling.bin`                                                        |
+| `--snapshot-out-orchard` | Output path for Orchard nullifiers file. Default: `snapshot-orchard.bin`                                                        |
 
+> **Important (target_id domain separation)**: Sapling and Orchard `target_id` values are domain separators for airdrop nullifier derivation in claim preparation. Sapling proving currently hardcodes its domain separator in-circuit (`ZAIRTEST`), so proving parameters/proofs must match it. Orchard proving is not implemented yet in this repository; when added, expect its domain separation to be circuit-bound as well.
 > **For organizers**: Run this to generate the official Merkle roots and publish them along with the snapshot files.
 >
 > **For users**: Run this yourself to fetch the nullifiers, or download the snapshot files published by the airdrop organizers.
@@ -130,26 +141,24 @@ The tool will securely prompt for:
 
 It outputs:
 
-1. **Unified Full Viewing Key** — Human-readable Bech32 format (use this with `--unified-full-viewing-key`)
+1. **Unified Full Viewing Key** — Human-readable Bech32 format (use this with `--ufvk`)
 2. **Individual keys** — Hex-encoded Orchard and Sapling FVKs (for debugging/advanced use)
 
 > **Security Note**: Keep your mnemonic secure. The viewing keys cannot spend funds but can reveal your transaction history.
 
 ### Step 3: Users Generate Their Claims
 
-Download the snapshot files published by the airdrop organizer, then run `claim-prepare` with your viewing keys:
+Download the snapshot files published by the airdrop organizer, then run `claim prepare` with your viewing keys:
 
 ```bash
-zair claim-prepare \
-  --network testnet \
-  --snapshot 280000..=3743871 \
-  --lightwalletd-url https://testnet.zec.rocks:443 \
-  --sapling-snapshot-nullifiers sapling-nullifiers-testnet.bin \
-  --orchard-snapshot-nullifiers orchard-nullifiers-testnet.bin \
-  --unified-full-viewing-key  uviewtest1kfhkx5fphx2ahhnpsme4sqsvx04nzuryd6vhd79rs2uv7x23gvtzlfvjq0r705kucmqcl9yf50nglmsn60c0chd8x94lnfa6s46fhdpvlv9lc33l76j32t62ucl0l70yxh2r77nqunawcxexjcg8gldmepqc9nufnn386ftas9xjalcrl3y8jycgtq6xq8lrvqm47hhrsqjcrm8e8pv7u595ma8dzdnps83fwspsvadz4dztsw8e9lwsvphzfglx0zxy32jyl7xcxhxnzw0lp5kzcpzjvwwwh3l80g9vdn7gfaj6927sg8m57gpafvj0wgu3upjdj63mxvxwd8qezcnvzlsd938dfaujm0usgz93gkk4cm60ejrj8zfckse2w7gaf8cj0n6k5 \
-  --birthday-height 3663119 \
-  --airdrop-claims-output-file airdrop_claims.json \
-  --airdrop-configuration-file airdrop_configuration.json
+zair claim prepare \
+  --config config.json \
+  --lightwalletd https://testnet.zec.rocks:443 \
+  --snapshot-sapling snapshot-sapling.bin \
+  --snapshot-orchard snapshot-orchard.bin \
+  --ufvk uviewtest1kfhkx5fphx2ahhnpsme4sqsvx04nzuryd6vhd79rs2uv7x23gvtzlfvjq0r705kucmqcl9yf50nglmsn60c0chd8x94lnfa6s46fhdpvlv9lc33l76j32t62ucl0l70yxh2r77nqunawcxexjcg8gldmepqc9nufnn386ftas9xjalcrl3y8jycgtq6xq8lrvqm47hhrsqjcrm8e8pv7u595ma8dzdnps83fwspsvadz4dztsw8e9lwsvphzfglx0zxy32jyl7xcxhxnzw0lp5kzcpzjvwwwh3l80g9vdn7gfaj6927sg8m57gpafvj0wgu3upjdj63mxvxwd8qezcnvzlsd938dfaujm0usgz93gkk4cm60ejrj8zfckse2w7gaf8cj0n6k5 \
+  --birthday 3663119 \
+  --claims-out claim-prepared.json
 ```
 
 This command will:
@@ -157,72 +166,84 @@ This command will:
 1. Verify the snapshot Merkle roots match the airdrop configuration (if provided)
 2. Scan the blockchain for notes belonging to your viewing keys
 3. For each unspent note found, generate a non-membership proof
-4. Output the proofs to `airdrop_claims.json`
+4. Output the prepared claim inputs to `claim-prepared.json`
 
-**Parameters of `claim-prepare` explained:**
+**Parameters of `claim prepare` explained:**
 
-| Parameter                       | Description                                                  |
-| ------------------------------- | ------------------------------------------------------------ |
-| `--network`                     | Network to use (`mainnet` or `testnet`)                      |
-| `--snapshot`                    | Block height range for the airdrop snapshot                  |
-| `--lightwalletd-url`            | URL of a lightwalletd server to scan the chain               |
-| `--sapling-snapshot-nullifiers` | Path to the Sapling nullifiers snapshot file                 |
-| `--orchard-snapshot-nullifiers` | Path to the Orchard nullifiers snapshot file                 |
-| `--unified-full-viewing-key`    | Your Unified Full Viewing Key in Bech32 format               |
-| `--birthday-height`             | The block height when your wallet was created (optimization) |
-| `--airdrop-claims-output-file`  | Output file for your claim proofs                            |
-| `--airdrop-configuration-file`  | (Optional) Airdrop configuration JSON to verify Merkle roots |
+| Parameter            | Description                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--config`           | Airdrop configuration JSON used for expected roots and network                                                                                           |
+| `--lightwalletd`     | (Optional) URL of a lightwalletd server. Defaults by config network (`mainnet` => `https://zec.rocks:443`, `testnet` => `https://testnet.zec.rocks:443`) |
+| `--snapshot-sapling` | (Optional) Path to the Sapling nullifiers snapshot file. Defaults to `snapshot-sapling.bin` if Sapling is enabled in config                              |
+| `--snapshot-orchard` | (Optional) Path to the Orchard nullifiers snapshot file. Defaults to `snapshot-orchard.bin` if Orchard is enabled in config                              |
+| `--ufvk`             | Your Unified Full Viewing Key in Bech32 format                                                                                                           |
+| `--birthday`         | Required scan start height for note discovery                                                                                                            |
+| `--claims-out`       | Output file for your claim inputs                                                                                                                        |
 
-> **Recommended**: Provide the `--airdrop-configuration-file` from the official airdrop to verify your snapshot files match the expected Merkle roots. This ensures your generated proofs will be valid.
+> **Recommended**: Provide the official `--config` from the airdrop to verify your snapshot files match expected Merkle roots. This ensures generated proofs will be valid.
 
-### Step 4: Generate Claim Proofs
+### Step 4: Recommended Claim Flow (`claim run`)
 
-The `claim-prepare` command outputs claim inputs (note data + non-membership proofs). To create the final ZK proofs that can be submitted on-chain, use `prove`:
+For most users, the recommended command is:
 
 ```bash
-zair prove \
-  --claim-inputs-file airdrop_claims.json \
-  --proofs-output-file airdrop_claim_proofs.json \
-  --seed-file seed.txt \
-  --network testnet \
-  --proving-key-file claim_proving_key.params
+zair claim run \
+  --config config.json \
+  --seed seed.txt \
+  --msg claim-message.bin \
+  --snapshot-sapling snapshot-sapling.bin \
+  --birthday 3663119 \
+  --pk setup-sapling-native-pk.params \
+  --account 0 \
+  --lightwalletd https://testnet.zec.rocks:443
 ```
 
-The seed file should contain your 64-byte wallet seed as hex.
-
-This command will:
-
-1. Load the claim inputs from the previous step
-2. Derive Sapling spending keys from your seed
-3. Generate Groth16 ZK proofs for each claim (in parallel)
-4. Verify each proof before including it in the output
-5. Output the proofs to `airdrop_claim_proofs.json`
-
-**Parameters of `prove` explained:**
-
-| Parameter              | Description                                                            |
-| ---------------------- | ---------------------------------------------------------------------- |
-| `--claim-inputs-file`  | Path to claim inputs JSON (output of `claim-prepare`)                  |
-| `--proofs-output-file` | Output path for generated proofs. Default: `airdrop_claim_proofs.json` |
-| `--seed-file`          | Path to file containing your 64-byte wallet seed as hex                |
-| `--network`            | Network to use (`mainnet` or `testnet`). Default: `mainnet`            |
-| `--proving-key-file`   | Path to proving key. Default: `claim_proving_key.params`               |
+`claim run` executes: `claim prepare -> claim prove -> claim sign`.
 
 > **Important**: Download the official proving and verifying keys published by the airdrop organizer. Do not generate your own—proofs made with different keys will be rejected.
 >
 > **Security Note**: The seed is required to derive spending authorization. Keep it secure—it can spend your funds.
 
-### Step 5: Verify Proofs (Optional)
+### Step 5: Advanced/Granular Claim Commands
 
-To independently verify generated proofs:
+If you need custom orchestration, run commands individually:
+
+1. `zair claim prepare ...`
+2. `zair claim prove ...`
+3. `zair claim sign ...`
+
+`claim sign` builds a `ZAIR_SIG` domain-separated digest over:
+
+- submission version
+- pool
+- target id
+- proof bundle hash
+- message hash
+
+and emits per-claim Sapling spend-auth signatures.
+
+> **Security Note**: The `secrets` file contains local proving/signing material (including `alpha` and value-commitment randomness). Keep it local and do not publish it.
+
+### Step 6: Recommended Verification Flow (`verify run`)
+
+For end-to-end verification:
 
 ```bash
-zair verify \
-  --proofs-file airdrop_claim_proofs.json \
-  --verifying-key-file claim_verifying_key.params
+zair verify run \
+  --config config.json \
+  --vk setup-sapling-native-vk.params \
+  --submission-in claim-submission.json \
+  --msg claim-message.bin
 ```
 
-This is a sanity check to ensure the generated proofs are valid before submission.
+`verify run` executes: `verify proof -> verify signature`.
+
+### Step 7: Advanced/Granular Verification Commands
+
+For separate verification stages:
+
+1. `zair verify proof ...`
+2. `zair verify signature ...`
 
 ## Privacy Properties
 
@@ -240,53 +261,63 @@ This is a sanity check to ensure the generated proofs are valid before submissio
 The airdrop organizer must generate and publish the Groth16 proving and verifying keys:
 
 ```bash
-zair setup-local \
-  --proving-key-file claim_proving_key.params \
-  --verifying-key-file claim_verifying_key.params
+zair setup local \
+  --scheme native \
+  --pk-out setup-sapling-native-pk.params \
+  --vk-out setup-sapling-native-vk.params
 ```
 
 > **Important**: Users must download and use the official keys published by the organizer. Regenerating keys locally will produce different keys that won't be accepted by the verifier.
-
-### View Configuration Schema
-
-To view the JSON schema for the airdrop configuration file:
-
-```bash
-zair config-schema
-```
-
-This prints the JSON schema describing the structure of the airdrop configuration file that is produced from `build-config` subcommand.
 
 ## Environment Variables
 
 Instead of passing arguments on the command line, you can use environment variables or a `.env` file:
 
-| Variable                      | Description                                                            |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| `AIRDROP_CLAIMS_FILE`         | Path for claims JSON (output of `claim-prepare`, input to `prove`)     |
-| `BIRTHDAY_HEIGHT`             | Birthday height for the provided viewing keys                          |
-| `CLAIM_PROOFS_FILE`           | Path for proofs JSON (output of `prove`, input to `verify`)            |
-| `CONFIGURATION_OUTPUT_FILE`   | Output path for airdrop configuration JSON                             |
-| `LIGHTWALLETD_URL`            | Lightwalletd gRPC endpoint URL                                         |
-| `NETWORK`                     | Network to use (`mainnet` or `testnet`)                                |
-| `ORCHARD_SNAPSHOT_NULLIFIERS` | Path to Orchard nullifiers file                                        |
-| `PROVING_KEY_FILE`            | Path to the Groth16 proving key file                                   |
-| `SAPLING_SNAPSHOT_NULLIFIERS` | Path to Sapling nullifiers file                                        |
-| `SEED_FILE`                   | Path to file containing 64-byte wallet seed as hex                     |
-| `SNAPSHOT`                    | Block range for the snapshot (e.g., `280000..=3743871`)                |
-| `VERIFYING_KEY_FILE`          | Path to the Groth16 verifying key file                                 |
+| Variable                | Description                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `CONFIG_FILE`           | Airdrop configuration JSON path used by `claim` and `verify` commands                                       |
+| `CLAIMS_IN`             | Path for prepared claims JSON input                                                                         |
+| `CLAIMS_OUT`            | Path for prepared claims JSON output                                                                        |
+| `BIRTHDAY`              | Required scan start height for claim preparation                                                            |
+| `SECRETS_IN`            | Path for local-only secrets JSON input                                                                      |
+| `SECRETS_OUT`           | Path for local-only secrets JSON output                                                                     |
+| `MESSAGE_FILE`          | Path to external message payload file used by `claim sign`/`verify signature`                               |
+| `PROOFS_IN`             | Path for proofs JSON input                                                                                  |
+| `PROOFS_OUT`            | Path for proofs JSON output                                                                                 |
+| `SUBMISSION_IN`         | Path for signed submission bundle JSON input                                                                |
+| `SUBMISSION_OUT`        | Path for signed submission bundle JSON output                                                               |
+| `CONFIG_OUT`            | Output path for airdrop configuration JSON                                                                  |
+| `LIGHTWALLETD_URL`      | Optional lightwalletd gRPC endpoint URL override                                                            |
+| `NETWORK`               | Network to use (`mainnet` or `testnet`)                                                                     |
+| `SNAPSHOT_ORCHARD_FILE` | Optional path to Orchard nullifiers file (defaults by enabled pool)                                         |
+| `PROVING_KEY_FILE`      | Path to the Groth16 proving key file                                                                        |
+| `SNAPSHOT_SAPLING_FILE` | Optional path to Sapling nullifiers file (defaults by enabled pool)                                         |
+| `SEED_FILE`             | Path to file containing 64-byte wallet seed as hex                                                          |
+| `SNAPSHOT_HEIGHT`       | Snapshot block height (inclusive)                                                                           |
+| `POOL`                  | Pool selection for `config build` (`sapling`, `orchard`, `both`)                                            |
+| `ACCOUNT_ID`            | ZIP-32 account index for seed-derived Sapling keys in `claim run`/`claim prove`/`claim sign` (default: `0`) |
+| `SCHEME_SAPLING`        | Sapling value commitment scheme (`native` or `sha256`) for `config build`                                   |
+| `SCHEME_ORCHARD`        | Orchard value commitment scheme (`native` or `sha256`) for `config build`                                   |
+| `SNAPSHOT_OUT_SAPLING`  | Output path for Sapling snapshot nullifiers from `config build`                                             |
+| `SNAPSHOT_OUT_ORCHARD`  | Output path for Orchard snapshot nullifiers from `config build`                                             |
+| `SETUP_SCHEME`          | Sapling setup scheme for `setup local` (`native` or `sha256`)                                               |
+| `SETUP_PK_OUT`          | Output path for proving key generated by `setup local`                                                      |
+| `SETUP_VK_OUT`          | Output path for verifying key generated by `setup local`                                                    |
+| `TARGET_SAPLING`        | Sapling target id (must be exactly 8 bytes)                                                                 |
+| `TARGET_ORCHARD`        | Orchard target id (must be at most 32 bytes)                                                                |
+| `VERIFYING_KEY_FILE`    | Path to the Groth16 verifying key file                                                                      |
 
 ## Troubleshooting
 
 ### No notes found
 
 - Verify your FVKs are correct using `mnemonic-to-fvks`
-- Ensure your `--birthday-height` is at or before when you first received funds
+- Ensure your `--birthday` is at or before when you first received funds
 - Check that you're connected to the correct network (`mainnet` vs `testnet`)
 
 ### Pool not active at snapshot height
 
-Ensure your snapshot range starts after the pool activation height:
+Ensure your snapshot height is at or after the pool activation height:
 
 | Pool    | Network | Activation Height |
 | ------- | ------- | ----------------- |
@@ -295,4 +326,4 @@ Ensure your snapshot range starts after the pool activation height:
 | Orchard | Mainnet | 1,687,104         |
 | Orchard | Testnet | 1,842,420         |
 
-For example, to include Orchard notes on mainnet, your snapshot must start at or after block 1,687,104.
+For example, to include Orchard notes on mainnet, your snapshot height must be at or after block 1,687,104.

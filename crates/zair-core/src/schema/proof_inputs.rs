@@ -6,7 +6,6 @@ use serde_with::serde_as;
 use zip32::Scope;
 
 use crate::base::Nullifier;
-use crate::schema::config::{CommitmentTreeAnchors, NonMembershipTreeAnchors};
 
 /// Serializable version of `zip32::Scope`.
 ///
@@ -38,39 +37,12 @@ impl From<SerializableScope> for Scope {
 }
 
 /// Unspent notes proofs
-#[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AirdropClaimInputs {
-    /// The non-membership tree anchors for Orchard and Sapling.
-    pub non_membership_tree_anchors: NonMembershipTreeAnchors,
-    /// The note commitment tree anchors for Orchard and Sapling.
-    pub note_commitment_tree_anchors: CommitmentTreeAnchors,
     /// Sapling claim inputs
     pub sapling_claim_input: Vec<ClaimInput<SaplingPrivateInputs>>,
     /// Orchard claim inputs
     pub orchard_claim_input: Vec<ClaimInput<OrchardPrivateInputs>>,
-}
-
-impl AirdropClaimInputs {
-    /// Create a new `AirdropClaimInputs` from pool claim results.
-    #[must_use]
-    pub const fn new(
-        sapling_merkle_root: [u8; 32],
-        orchard_merkle_root: [u8; 32],
-        note_commitment_tree_anchors: CommitmentTreeAnchors,
-        sapling_claim_input: Vec<ClaimInput<SaplingPrivateInputs>>,
-        orchard_claim_input: Vec<ClaimInput<OrchardPrivateInputs>>,
-    ) -> Self {
-        Self {
-            non_membership_tree_anchors: NonMembershipTreeAnchors {
-                sapling: sapling_merkle_root,
-                orchard: orchard_merkle_root,
-            },
-            note_commitment_tree_anchors,
-            sapling_claim_input,
-            orchard_claim_input,
-        }
-    }
 }
 
 /// A non-membership proof demonstrating that a nullifier is not in the snapshot.
@@ -84,8 +56,6 @@ impl AirdropClaimInputs {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimInput<P> {
-    /// The block height where the note was created.
-    pub block_height: u64,
     /// The public inputs for the non-membership proof.
     pub public_inputs: PublicInputs,
     /// The private inputs for the non-membership proof.
@@ -175,7 +145,7 @@ pub struct OrchardPrivateInputs {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicInputs {
-    /// The hiding nullifier
+    /// The airdrop nullifier
     #[serde_as(as = "Hex")]
-    pub hiding_nullifier: Nullifier,
+    pub airdrop_nullifier: Nullifier,
 }

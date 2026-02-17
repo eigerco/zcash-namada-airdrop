@@ -16,8 +16,6 @@ use super::note_metadata::{NoteMetadata, OrchardNoteMetadata, SaplingNoteMetadat
 
 /// Result of processing claims for a single pool.
 pub struct PoolClaimResult<P> {
-    /// The non-membership tree merkle root.
-    pub anchor: [u8; 32],
     /// The claim inputs for this pool.
     pub claims: Vec<ClaimInput<P>>,
 }
@@ -25,10 +23,7 @@ pub struct PoolClaimResult<P> {
 impl<P> PoolClaimResult<P> {
     /// Create an empty result for when a pool has no claims.
     pub const fn empty() -> Self {
-        Self {
-            anchor: [0u8; 32],
-            claims: Vec::new(),
-        }
+        Self { claims: Vec::new() }
     }
 }
 
@@ -46,7 +41,7 @@ pub trait PoolProcessor {
     const POOL_NAME: &'static str;
 
     /// Returns the expected merkle root from the airdrop configuration.
-    fn expected_root(config: &AirdropConfiguration) -> [u8; 32];
+    fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]>;
 
     /// Collects note metadata from the visitor.
     /// Returns `None` if the viewing key is not available.
@@ -66,8 +61,8 @@ impl PoolProcessor for SaplingPool {
 
     const POOL_NAME: &'static str = "Sapling";
 
-    fn expected_root(config: &AirdropConfiguration) -> [u8; 32] {
-        config.non_membership_tree_anchors.sapling
+    fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
+        config.sapling.as_ref().map(|pool| pool.nullifier_gap_root)
     }
 
     fn collect_notes(
@@ -79,12 +74,12 @@ impl PoolProcessor for SaplingPool {
             return Ok(None);
         };
 
+        let Some(sapling_config) = airdrop_config.sapling.as_ref() else {
+            return Ok(None);
+        };
+
         let hiding_factor = zair_scan::user_nullifiers::SaplingHidingFactor {
-            personalization: airdrop_config
-                .hiding_factor
-                .sapling
-                .personalization
-                .as_bytes(),
+            personalization: sapling_config.target_id.as_bytes(),
         };
 
         let mut notes = HashMap::new();
@@ -129,8 +124,8 @@ impl PoolProcessor for OrchardPool {
 
     const POOL_NAME: &'static str = "Orchard";
 
-    fn expected_root(config: &AirdropConfiguration) -> [u8; 32] {
-        config.non_membership_tree_anchors.orchard
+    fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
+        config.orchard.as_ref().map(|pool| pool.nullifier_gap_root)
     }
 
     fn collect_notes(
@@ -142,9 +137,13 @@ impl PoolProcessor for OrchardPool {
             return Ok(None);
         };
 
+        let Some(orchard_config) = airdrop_config.orchard.as_ref() else {
+            return Ok(None);
+        };
+
         let hiding_factor = zair_scan::user_nullifiers::OrchardHidingFactor {
-            domain: &airdrop_config.hiding_factor.orchard.domain,
-            tag: airdrop_config.hiding_factor.orchard.tag.as_bytes(),
+            domain: &orchard_config.target_id,
+            tag: b"K",
         };
 
         let mut notes = HashMap::new();

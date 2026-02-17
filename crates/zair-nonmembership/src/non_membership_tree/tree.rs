@@ -488,6 +488,8 @@ mod tests {
     }
 
     mod from_nullifiers {
+        use hex_literal::hex;
+
         use super::*;
 
         #[test]
@@ -498,6 +500,10 @@ mod tests {
 
             // 0 nullifiers -> 1 gap (MIN, MAX)
             assert_eq!(tree.leaf_count(), 1);
+            assert_eq!(
+                tree.root().to_bytes(),
+                hex!("c1fe1db7b01153fa3e40fd0053f3f7f69385c2de7fff5c4d705407fb32acb052")
+            );
         }
 
         #[test]

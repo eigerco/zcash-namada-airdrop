@@ -9,11 +9,13 @@ description = "Non-membership Merkle tree and nullifier utilities for ZAIR"
 [dependencies]
 bridgetree = { workspace = true }
 incrementalmerkletree = { workspace = true }
+jubjub = { workspace = true }
 sapling = { workspace = true }
 thiserror = { workspace = true }
 zair-core = { workspace = true }
 
 [dev-dependencies]
+hex-literal = { workspace = true }
 test-utils = { workspace = true }
 
 [lints]

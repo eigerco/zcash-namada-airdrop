@@ -6,7 +6,7 @@
 // ZK circuit code requires patterns that trigger these lints.
 // The code closely follows the original Sapling Spend circuit implementation.
 
-use bellman::gadgets::{Assignment, blake2s, boolean, multipack, num};
+use bellman::gadgets::{Assignment, blake2s, boolean, multipack, num, sha256};
 use bellman::{Circuit, ConstraintSystem, SynthesisError};
 use group::ff::PrimeField;
 use sapling::circuit::constants::{
@@ -23,7 +23,7 @@ use crate::gadgets::enforce_less_than;
 
 /// Personalization for the hiding nullifier (airdrop-specific).
 /// This is used to derive a nullifier that doesn't reveal the Zcash nullifier.
-pub const HIDING_NF_PERSONALIZATION: &[u8; 8] = b"MASP_alt";
+pub const HIDING_NF_PERSONALIZATION: &[u8; 8] = b"ZAIRTEST";
 
 /// The opening (value and randomness) of a Sapling value commitment.
 #[derive(Clone)]
@@ -32,6 +32,16 @@ pub struct ValueCommitmentOpening {
     pub value: NoteValue,
     /// The randomness for the value commitment.
     pub randomness: jubjub::Scalar,
+}
+
+/// Which value commitment is exposed by the circuit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ValueCommitmentScheme {
+    /// Expose the native Sapling value commitment point.
+    #[default]
+    Native,
+    /// Expose a SHA-256 value commitment digest.
+    Sha256,
 }
 
 /// Level used for hashing nullifier pairs into non-membership tree leaves.
@@ -89,6 +99,12 @@ pub struct Claim {
 
     /// The root of the non-membership tree.
     pub nm_anchor: Option<bls12_381::Scalar>,
+
+    /// Which value commitment scheme to expose publicly.
+    pub value_commitment_scheme: ValueCommitmentScheme,
+
+    /// Randomness used for SHA-256 value commitment preimage.
+    pub rcv_sha256: Option<[u8; 32]>,
 }
 
 impl core::fmt::Debug for Claim {
@@ -176,12 +192,11 @@ where
     Ok(bits)
 }
 
-/// Exposes a Pedersen commitment to the value as an
-/// input to the circuit
-fn expose_value_commitment<CS>(
+/// Computes value bits and the Sapling value commitment point.
+fn compute_value_commitment<CS>(
     mut cs: CS,
     value_commitment_opening: Option<&ValueCommitmentOpening>,
-) -> Result<Vec<boolean::Boolean>, SynthesisError>
+) -> Result<(Vec<boolean::Boolean>, ecc::EdwardsPoint), SynthesisError>
 where
     CS: ConstraintSystem<bls12_381::Scalar>,
 {
@@ -216,10 +231,83 @@ where
     // Compute the Pedersen commitment to the value
     let cv = value.add(cs.namespace(|| "computation of cv"), &rcv)?;
 
-    // Expose the commitment as an input to the circuit
-    cv.inputize(cs.namespace(|| "commitment point"))?;
+    Ok((value_bits, cv))
+}
 
+/// Exposes a Pedersen commitment to the value as an input to the circuit.
+fn expose_value_commitment<CS>(
+    mut cs: CS,
+    value_commitment_opening: Option<&ValueCommitmentOpening>,
+) -> Result<Vec<boolean::Boolean>, SynthesisError>
+where
+    CS: ConstraintSystem<bls12_381::Scalar>,
+{
+    let (value_bits, cv) = compute_value_commitment(
+        cs.namespace(|| "compute value commitment"),
+        value_commitment_opening,
+    )?;
+    cv.inputize(cs.namespace(|| "commitment point"))?;
     Ok(value_bits)
+}
+
+#[must_use]
+fn bytes_to_bits_be_const(bytes: &[u8]) -> Vec<boolean::Boolean> {
+    let mut out = Vec::with_capacity(bytes.len().saturating_mul(8));
+    for byte in bytes {
+        // Big-endian within each byte.
+        out.push(boolean::Boolean::constant(byte & 0b1000_0000 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0100_0000 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0010_0000 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0001_0000 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0000_1000 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0000_0100 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0000_0010 != 0));
+        out.push(boolean::Boolean::constant(byte & 0b0000_0001 != 0));
+    }
+    out
+}
+
+#[must_use]
+fn reverse_bits_within_each_byte(bits: &[boolean::Boolean]) -> Vec<boolean::Boolean> {
+    let mut out = Vec::with_capacity(bits.len());
+    for byte in bits.chunks(8) {
+        out.extend(byte.iter().rev().cloned());
+    }
+    out
+}
+
+/// Computes SHA-256 commitment bits (little-endian per byte for multipacking).
+fn value_commitment_sha256_bits_le<CS>(
+    mut cs: CS,
+    value_bits_le: &[boolean::Boolean],
+    rcv_sha256: Option<[u8; 32]>,
+) -> Result<Vec<boolean::Boolean>, SynthesisError>
+where
+    CS: ConstraintSystem<bls12_381::Scalar>,
+{
+    // Preimage = PERSONALIZATION(8 bytes) || LE64(value) || rcv_sha256(32 bytes).
+    let prefix_bits_be = bytes_to_bits_be_const(HIDING_NF_PERSONALIZATION);
+
+    // Value bits are little-endian per-byte; SHA gadget expects big-endian per-byte.
+    let mut value_bits_for_sha = Vec::with_capacity(64);
+    for byte_bits_le in value_bits_le.chunks_exact(8) {
+        value_bits_for_sha.extend(byte_bits_le.iter().rev().cloned());
+    }
+
+    let rcv_sha256_bits_input =
+        witness_bytes_as_bits(cs.namespace(|| "rcv_sha256 bits"), rcv_sha256.as_ref())?;
+    let rcv_sha256_bits_for_sha = reverse_bits_within_each_byte(&rcv_sha256_bits_input);
+
+    let mut preimage_bits_be = Vec::with_capacity(384);
+    preimage_bits_be.extend(prefix_bits_be);
+    preimage_bits_be.extend(value_bits_for_sha);
+    preimage_bits_be.extend(rcv_sha256_bits_for_sha);
+
+    let digest_bits_be = sha256::sha256(
+        cs.namespace(|| "sha256(value commitment)"),
+        &preimage_bits_be,
+    )?;
+    Ok(reverse_bits_within_each_byte(&digest_bits_be))
 }
 
 #[allow(
@@ -343,27 +431,31 @@ impl Circuit<bls12_381::Scalar> for Claim {
         // value (in big endian) followed by g_d and pk_d
         let mut note_contents = vec![];
 
-        // Handle the value; we'll need it later for the
-        // dummy input check.
-        let mut value_num = num::Num::zero();
-        {
-            // Get the value in little-endian bit order
-            let value_bits = expose_value_commitment(
+        // Expose the configured value commitment and keep the note value bits
+        // for note-commitment recomputation.
+        let value_bits = match self.value_commitment_scheme {
+            ValueCommitmentScheme::Native => expose_value_commitment(
                 cs.namespace(|| "value commitment"),
                 self.value_commitment_opening.as_ref(),
-            )?;
-
-            // Compute the note's value as a linear combination
-            // of the bits.
-            let mut coeff = bls12_381::Scalar::one();
-            for bit in &value_bits {
-                value_num = value_num.add_bool_with_coeff(CS::one(), bit, coeff);
-                coeff = coeff.double();
+            )?,
+            ValueCommitmentScheme::Sha256 => {
+                let (value_bits, _) = compute_value_commitment(
+                    cs.namespace(|| "compute value commitment"),
+                    self.value_commitment_opening.as_ref(),
+                )?;
+                let digest_bits_le = value_commitment_sha256_bits_le(
+                    cs.namespace(|| "value commitment sha256"),
+                    &value_bits,
+                    self.rcv_sha256,
+                )?;
+                multipack::pack_into_inputs(
+                    cs.namespace(|| "pack value commitment sha256"),
+                    &digest_bits_le,
+                )?;
+                value_bits
             }
-
-            // Place the value in the note
-            note_contents.extend(value_bits);
-        }
+        };
+        note_contents.extend(value_bits);
 
         // Place g_d in the note
         note_contents.extend(g_d.repr(cs.namespace(|| "representation of g_d"))?);
@@ -416,13 +508,11 @@ impl Circuit<bls12_381::Scalar> for Claim {
                 Ok(*real_anchor_value.get()?)
             })?;
 
-            // (cur - rt) * value = 0
-            // if value is zero, cur and rt can be different
-            // if value is nonzero, they must be equal
+            // Always enforce note-tree root equality for airdrop claims.
             cs.enforce(
-                || "conditionally enforce correct root",
+                || "enforce correct root",
                 |lc| lc + cur.get_variable() - rt.get_variable(),
-                |lc| lc + &value_num.lc(bls12_381::Scalar::one()),
+                |lc| lc + CS::one(),
                 |lc| lc,
             );
 
@@ -738,6 +828,8 @@ mod tests {
                     nm_right_nf: Some(nm_right_nf),
                     nm_merkle_path: nm_merkle_path.clone(),
                     nm_anchor: Some(nm_anchor),
+                    value_commitment_scheme: ValueCommitmentScheme::Native,
+                    rcv_sha256: None,
                 };
 
                 instance.synthesize(&mut cs).expect("synthesis failed");

@@ -1,14 +1,15 @@
+use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::str::FromStr as _;
 
-use eyre::{Context as _, ContextCompat as _};
+use eyre::{Context as _, ContextCompat as _, ensure};
 use http::Uri;
 use tokio::fs::File;
 use tokio::io::BufWriter;
 use tracing::{info, instrument, warn};
 use zair_core::base::SanitiseNullifiers;
 use zair_core::schema::config::{
-    AirdropConfiguration, CommitmentTreeAnchors, HidingFactor, NonMembershipTreeAnchors,
+    AirdropConfiguration, OrchardSnapshot, SaplingSnapshot, ValueCommitmentScheme,
 };
 use zair_nonmembership::NonMembershipTree;
 use zair_scan::light_walletd::LightWalletd;
@@ -16,76 +17,111 @@ use zair_scan::scanner::ChainNullifiersVisitor;
 use zair_scan::write_nullifiers;
 use zcash_protocol::consensus::BlockHeight;
 
-use crate::common::CommonConfig;
+use crate::common::{CommonConfig, PoolSelection, resolve_lightwalletd_url, to_airdrop_network};
+use crate::network_params::{
+    orchard_activation_height, sapling_activation_height, scan_start_height,
+};
 
 /// 1 MiB buffer for file I/O.
 const FILE_BUF_SIZE: usize = 1024 * 1024;
 
-/// Build the airdrop configuration by fetching nullifiers from lightwalletd
-/// and computing the non-membership merkle-tree
+/// Build the airdrop configuration by fetching nullifiers from lightwalletd,
+/// computing the non-membership roots, and exporting snapshot metadata.
 ///
 /// # Errors
-/// Returns an error if fetching nullifiers or writing files fails
-#[instrument(skip_all, fields(
-    snapshot = %format!("{}..={}", config.snapshot.start(), config.snapshot.end())
-))]
+/// Returns an error if fetching nullifiers, validating inputs, or writing files fails.
+#[instrument(skip_all, fields(snapshot_height = config.snapshot_height, ?pool))]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "CLI-facing command entrypoint mirrors explicit command arguments"
+)]
 pub async fn build_airdrop_configuration(
     config: CommonConfig,
+    pool: PoolSelection,
     configuration_output_file: PathBuf,
     sapling_snapshot_nullifiers: PathBuf,
     orchard_snapshot_nullifiers: PathBuf,
-    hiding_factor: HidingFactor,
+    sapling_target_id: String,
+    sapling_value_commitment_scheme: ValueCommitmentScheme,
+    orchard_target_id: String,
+    orchard_value_commitment_scheme: ValueCommitmentScheme,
 ) -> eyre::Result<()> {
-    info!("Fetching nullifiers");
+    validate_target_ids(pool, &sapling_target_id, &orchard_target_id)?;
+
+    let scan_range = resolve_snapshot_scan_range(config.network, pool, config.snapshot_height)?;
     let lightwalletd_url =
-        Uri::from_str(&config.lightwalletd_url).context("lightwalletd URL is required")?;
+        resolve_lightwalletd_url(config.network, config.lightwalletd_url.as_deref());
+
+    info!(?scan_range, "Fetching nullifiers for snapshot range");
+    let lightwalletd_url = Uri::from_str(&lightwalletd_url).context("Invalid lightwalletd URL")?;
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
 
     let mut visitor = ChainNullifiersVisitor::default();
     lightwalletd
-        .scan_nullifiers(&mut visitor, &config.snapshot)
+        .scan_nullifiers(&mut visitor, &scan_range)
         .await?;
     let (sapling_nullifiers, orchard_nullifiers) = visitor.sanitise_nullifiers();
 
     let sapling_handle = tokio::spawn(process_pool(
+        pool.includes_sapling(),
         "sapling",
         sapling_nullifiers,
         sapling_snapshot_nullifiers,
     ));
     let orchard_handle = tokio::spawn(process_pool(
+        pool.includes_orchard(),
         "orchard",
         orchard_nullifiers,
         orchard_snapshot_nullifiers,
     ));
 
     let (sapling_nf_root, orchard_nf_root) = tokio::try_join!(sapling_handle, orchard_handle)?;
-    let non_membership_tree_anchors = NonMembershipTreeAnchors {
-        sapling: sapling_nf_root?.unwrap_or_default(),
-        orchard: orchard_nf_root?.unwrap_or_default(),
-    };
-    info!("Computed non-membership tree anchors");
 
-    // These are the note commitment tree roots needed for proving note existence
-    let upper_limit: u32 = (*config.snapshot.end())
+    // Note commitment roots needed for proving note existence.
+    let upper_limit: u32 = config
+        .snapshot_height
         .try_into()
-        .context("Snapshot end height too large")?;
+        .context("Snapshot height too large")?;
     let upper_limit = upper_limit
         .checked_add(1)
-        .context("Snapshot end height overflowed when adding 1")?;
+        .context("Snapshot height overflowed when adding 1")?;
 
-    let note_commitment_tree_anchors = lightwalletd
+    let note_commitment_roots = lightwalletd
         .commitment_tree_anchors(BlockHeight::from_u32(upper_limit))
         .await
-        .context("Failed to fetch commitment tree anchors from lightwalletd")?;
+        .context("Failed to fetch commitment tree roots from lightwalletd")?;
+
+    let sapling = if pool.includes_sapling() {
+        let sapling_nf_root = sapling_nf_root?
+            .context("Sapling pool enabled but nullifier gap root was not produced")?;
+        Some(SaplingSnapshot {
+            note_commitment_root: note_commitment_roots.sapling,
+            nullifier_gap_root: sapling_nf_root,
+            target_id: sapling_target_id,
+            value_commitment_scheme: sapling_value_commitment_scheme,
+        })
+    } else {
+        None
+    };
+
+    let orchard = if pool.includes_orchard() {
+        let orchard_nf_root = orchard_nf_root?
+            .context("Orchard pool enabled but nullifier gap root was not produced")?;
+        Some(OrchardSnapshot {
+            note_commitment_root: note_commitment_roots.orchard,
+            nullifier_gap_root: orchard_nf_root,
+            target_id: orchard_target_id,
+            value_commitment_scheme: orchard_value_commitment_scheme,
+        })
+    } else {
+        None
+    };
 
     let config_out = AirdropConfiguration::new(
-        config.snapshot,
-        non_membership_tree_anchors,
-        CommitmentTreeAnchors {
-            sapling: note_commitment_tree_anchors.sapling,
-            orchard: note_commitment_tree_anchors.orchard,
-        },
-        hiding_factor,
+        to_airdrop_network(config.network),
+        config.snapshot_height,
+        sapling,
+        orchard,
     );
 
     let json = serde_json::to_string_pretty(&config_out)?;
@@ -95,18 +131,78 @@ pub async fn build_airdrop_configuration(
     Ok(())
 }
 
+fn validate_target_ids(
+    pool: PoolSelection,
+    sapling_target_id: &str,
+    orchard_target_id: &str,
+) -> eyre::Result<()> {
+    if pool.includes_sapling() {
+        ensure!(
+            sapling_target_id.len() == 8,
+            "Sapling target_id must be exactly 8 bytes"
+        );
+    }
+    if pool.includes_orchard() {
+        ensure!(
+            orchard_target_id.len() <= 32,
+            "Orchard target_id must be at most 32 bytes"
+        );
+    }
+    Ok(())
+}
+
+/// Resolve the scan range for collecting nullifiers for a snapshot.
+///
+/// For `Both`, scanning starts at min(Sapling start, Orchard start), so one chain
+/// pass covers both pools.
+fn resolve_snapshot_scan_range(
+    network: zcash_protocol::consensus::Network,
+    pool: PoolSelection,
+    snapshot_height: u64,
+) -> eyre::Result<RangeInclusive<u64>> {
+    if pool.includes_sapling() {
+        let sapling_start = sapling_activation_height(network);
+        ensure!(
+            snapshot_height >= sapling_start,
+            "Snapshot height {} is below Sapling activation height {}",
+            snapshot_height,
+            sapling_start
+        );
+    }
+
+    if pool.includes_orchard() {
+        let orchard_start = orchard_activation_height(network);
+        ensure!(
+            snapshot_height >= orchard_start,
+            "Snapshot height {} is below Orchard activation height {}",
+            snapshot_height,
+            orchard_start
+        );
+    }
+
+    let scan_start = scan_start_height(network, pool);
+    Ok(scan_start..=snapshot_height)
+}
+
 #[instrument(skip_all, fields(pool = %pool, store = %store.display()))]
 async fn process_pool(
+    enabled: bool,
     pool: &str,
     nullifiers: SanitiseNullifiers,
     store: PathBuf,
 ) -> eyre::Result<Option<[u8; 32]>> {
-    if nullifiers.is_empty() {
-        warn!(pool, "No nullifiers collected");
+    if !enabled {
         return Ok(None);
     }
 
-    info!(count = nullifiers.len(), "Collected nullifiers");
+    if nullifiers.is_empty() {
+        warn!(
+            pool,
+            "No nullifiers collected; using canonical empty-gap root"
+        );
+    } else {
+        info!(count = nullifiers.len(), "Collected nullifiers");
+    }
 
     let file = File::create(&store).await?;
     let mut writer = BufWriter::with_capacity(FILE_BUF_SIZE, file);
@@ -124,20 +220,29 @@ async fn process_pool(
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zair_core::schema::config::{AirdropNetwork, OrchardSnapshot, SaplingSnapshot};
+
     use super::*;
 
     #[test]
     fn deserialize_json_format() {
-        // Documents the expected JSON format for consumers
+        // Documents the expected JSON format for consumers.
         let json = r#"{
-          "snapshot_range": { "start": 100, "end": 200 },
-          "non_membership_tree_anchors": {
-            "sapling": "0505050505050505050505050505050505050505050505050505050505050505",
-            "orchard": "0606060606060606060606060606060606060606060606060606060606060606"
+          "network": "testnet",
+          "snapshot_height": 200,
+          "sapling": {
+            "note_commitment_root": "0101010101010101010101010101010101010101010101010101010101010101",
+            "nullifier_gap_root": "0505050505050505050505050505050505050505050505050505050505050505",
+            "target_id": "ZAIRTEST",
+            "value_commitment_scheme": "native"
           },
-          "note_commitment_tree_anchors": {
-            "sapling": "0101010101010101010101010101010101010101010101010101010101010101",
-            "orchard": "0202020202020202020202020202020202020202020202020202020202020202"
+          "orchard": {
+            "note_commitment_root": "0202020202020202020202020202020202020202020202020202020202020202",
+            "nullifier_gap_root": "0606060606060606060606060606060606060606060606060606060606060606",
+            "target_id": "ZAIRTEST:O",
+            "value_commitment_scheme": "sha256"
           }
         }"#;
 
@@ -145,17 +250,55 @@ mod tests {
             serde_json::from_str(json).expect("Failed to deserialize JSON");
 
         let expected_config = AirdropConfiguration::new(
-            100..=200,
-            NonMembershipTreeAnchors {
-                sapling: [5_u8; 32_usize],
-                orchard: [6_u8; 32_usize],
-            },
-            CommitmentTreeAnchors {
-                sapling: [1_u8; 32_usize],
-                orchard: [2_u8; 32_usize],
-            },
-            HidingFactor::default(),
+            AirdropNetwork::Testnet,
+            200,
+            Some(SaplingSnapshot {
+                note_commitment_root: [1_u8; 32],
+                nullifier_gap_root: [5_u8; 32],
+                target_id: "ZAIRTEST".to_string(),
+                value_commitment_scheme: ValueCommitmentScheme::Native,
+            }),
+            Some(OrchardSnapshot {
+                note_commitment_root: [2_u8; 32],
+                nullifier_gap_root: [6_u8; 32],
+                target_id: "ZAIRTEST:O".to_string(),
+                value_commitment_scheme: ValueCommitmentScheme::Sha256,
+            }),
         );
-        assert_eq!(json_config.snapshot_range, expected_config.snapshot_range);
+
+        assert_eq!(json_config, expected_config);
+    }
+
+    #[tokio::test]
+    async fn process_pool_empty_nullifiers_uses_canonical_root() {
+        let nullifiers = SanitiseNullifiers::new(vec![]);
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "zair-empty-nullifiers-{}-{unique}.bin",
+            std::process::id()
+        ));
+
+        let root = process_pool(true, "sapling", nullifiers, path.clone())
+            .await
+            .expect("processing should succeed")
+            .expect("enabled pool should produce a root");
+
+        let expected_nullifiers = SanitiseNullifiers::new(vec![]);
+        let expected_root = NonMembershipTree::from_nullifiers(&expected_nullifiers)
+            .expect("empty nullifiers should produce canonical tree")
+            .root()
+            .to_bytes();
+        assert_eq!(root, expected_root);
+
+        let size = std::fs::metadata(&path)
+            .expect("snapshot file must exist")
+            .len();
+        assert_eq!(size, 0, "empty snapshot file should contain zero bytes");
+
+        std::fs::remove_file(path).expect("temporary snapshot file should be removable");
     }
 }

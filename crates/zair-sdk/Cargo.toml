@@ -15,10 +15,11 @@ prove = ["zair-sapling-proofs/prove"]
 eyre = { workspace = true }
 http = { workspace = true }
 orchard = { workspace = true }
+redjubjub = { workspace = true }
 sapling = { workspace = true }
-schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_with = { workspace = true, features = ["hex"] }
 tokio = { workspace = true, features = [
   "rt-multi-thread",
   "macros",
@@ -37,9 +38,12 @@ zair-sapling-proofs = { workspace = true }
 zair-scan = { workspace = true }
 
 bellman = { workspace = true }
+blake2b_simd = { workspace = true }
 bls12_381 = { workspace = true }
 group = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
+jubjub = { workspace = true }
+rand_core = { workspace = true }
 secrecy = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }

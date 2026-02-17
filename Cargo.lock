@@ -1299,6 +1299,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
 name = "hmac"
 version = "0.13.0-pre.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2298,6 +2304,7 @@ checksum = "89b0ac1bc6bb3696d2c6f52cff8fba57238b81da8c0214ee6cd146eb8fde364e"
 dependencies = [
  "rand_core 0.6.4",
  "reddsa",
+ "serde",
  "thiserror 1.0.69",
  "zeroize",
 ]
@@ -3753,7 +3760,6 @@ dependencies = [
  "ureq",
  "zair-core",
  "zair-sdk",
- "zcash_keys",
  "zcash_protocol",
 ]
 
@@ -3774,7 +3780,9 @@ name = "zair-nonmembership"
 version = "0.1.0"
 dependencies = [
  "bridgetree",
+ "hex-literal",
  "incrementalmerkletree",
+ "jubjub",
  "sapling-crypto",
  "test-utils",
  "thiserror 2.0.18",
@@ -3806,7 +3814,9 @@ dependencies = [
  "jubjub",
  "rand 0.8.5",
  "sapling-crypto",
+ "sha2 0.10.9",
  "thiserror 2.0.18",
+ "zair-core",
  "zair-nonmembership",
  "zair-sapling-circuit",
 ]
@@ -3850,17 +3860,21 @@ name = "zair-sdk"
 version = "0.1.0"
 dependencies = [
  "bellman",
+ "blake2b_simd",
  "bls12_381",
  "eyre",
  "group",
  "hex",
  "http",
+ "jubjub",
  "orchard",
+ "rand_core 0.6.4",
+ "redjubjub",
  "sapling-crypto",
- "schemars 1.2.1",
  "secrecy 0.10.3",
  "serde",
  "serde_json",
+ "serde_with",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
