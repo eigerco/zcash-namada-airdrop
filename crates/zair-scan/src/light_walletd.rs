@@ -268,12 +268,33 @@ impl LightWalletd {
         visitor: &mut V,
         range: &RangeInclusive<u64>,
     ) -> Result<(), LightWalletdError> {
+        self.scan_nullifiers_with_progress(visitor, range, |_, _, _| {})
+            .await
+    }
+
+    /// Scan blocks for nullifiers only (no decryption needed), with progress callback.
+    ///
+    /// Calls `on_progress(height, scanned, total)` after each block is processed.
+    ///
+    /// # Errors
+    /// Returns an error if scanning fails.
+    pub async fn scan_nullifiers_with_progress<V: ScanVisitor>(
+        &self,
+        visitor: &mut V,
+        range: &RangeInclusive<u64>,
+        mut on_progress: impl FnMut(u64, usize, usize),
+    ) -> Result<(), LightWalletdError> {
         let mut stream = Self::get_block_range_stream(&self.client, &self.config, range).await?;
+        let total_blocks_u64 = range.end().saturating_sub(*range.start()).saturating_add(1);
+        let total_blocks = usize::try_from(total_blocks_u64).unwrap_or(usize::MAX);
+        let mut scanned_blocks = 0usize;
 
         while let Some(block) =
             receive_next_block(&mut stream, self.config.stream_message_timeout).await?
         {
             extract_nullifiers(&block, visitor);
+            scanned_blocks = scanned_blocks.saturating_add(1);
+            on_progress(block.height, scanned_blocks, total_blocks);
         }
 
         Ok(())

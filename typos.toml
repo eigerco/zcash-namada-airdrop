@@ -1,3 +1,6 @@
+[files]
+extend-exclude = ["nix/*.patch"]
+
 [default]
 # Ignore words matching long alphanumeric patterns (hashes, addresses)
 extend-ignore-re = ["([a-zA-Z0-9]{16,})"]
@@ -5,3 +8,4 @@ extend-ignore-re = ["([a-zA-Z0-9]{16,})"]
 [default.extend-words]
 groth = "groth"
 Groth = "Groth"
+advices = "advices"

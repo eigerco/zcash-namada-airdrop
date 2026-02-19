@@ -10,10 +10,10 @@ use std::collections::BTreeSet;
 
 use bridgetree::BridgeTree;
 use incrementalmerkletree::{Hashable, Position};
-use thiserror::Error;
 use zair_core::base::{Nullifier, SanitiseNullifiers};
 
-use super::node::{NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode};
+use crate::core::{MerklePathError, TreePosition, should_report_progress};
+use crate::node::{NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode};
 
 #[derive(Debug, PartialEq, Eq)]
 /// A gap between two nullifiers.
@@ -22,63 +22,6 @@ struct Gap {
     pub left: Nullifier,
     /// The right nullifier of the gap.
     pub right: Nullifier,
-}
-
-/// Mapping a nullifier to its gap index (leaf position).
-#[derive(Debug, PartialEq, Eq)]
-pub struct TreePosition {
-    /// The nullifier.
-    pub nullifier: Nullifier,
-    /// The leaf position (gap index) in the tree.
-    pub leaf_position: Position,
-    /// The left bound of the gap.
-    pub left_bound: Nullifier,
-    /// The right bound of the gap.
-    pub right_bound: Nullifier,
-}
-
-impl TreePosition {
-    /// Create a new `TreePosition`.
-    ///
-    /// # Errors
-    /// Returns error if the leaf position (`usize`) cannot be converted to `Position`.
-    pub fn new(
-        nullifier: Nullifier,
-        leaf_position: usize,
-        left_bound: Nullifier,
-        right_bound: Nullifier,
-    ) -> Result<Self, MerklePathError> {
-        Ok(Self {
-            nullifier,
-            leaf_position: leaf_position.try_into()?,
-            left_bound,
-            right_bound,
-        })
-    }
-}
-
-/// Errors that can occur when working with the Merkle tree.
-#[derive(Error, Debug, PartialEq, Eq)]
-pub enum MerklePathError {
-    /// The position is not marked for witnessing.
-    #[error("Position {0} is not marked for witnessing")]
-    NotMarked(u64),
-
-    /// Failed to generate witness.
-    #[error("Failed to generate witness: {0}")]
-    WitnessError(String),
-
-    /// Position conversion error.
-    #[error("Position conversion error: {0}")]
-    PositionConversionError(#[from] std::num::TryFromIntError),
-
-    /// The tree can support up to 2^32 leaves.
-    #[error("Leaves {0} exceeds maximum supported leaves (2^32)")]
-    LeavesOverflow(usize),
-
-    /// Unexpected error.
-    #[error("Unexpected error: {0}")]
-    Unexpected(&'static str),
 }
 
 /// A space-efficient Merkle tree for non-membership proofs.
@@ -119,6 +62,10 @@ impl NonMembershipTree {
     ///
     /// # Errors
     /// - `MerklePathError::Unexpected` if the merkle root cannot be computed after construction.
+    #[allow(
+        dead_code,
+        reason = "Kept for focused tree-construction tests; production path uses marked-construction APIs"
+    )]
     fn from_leaves<I>(leaves: I) -> Result<Self, MerklePathError>
     where
         I: IntoIterator<Item = NonMembershipNode>,
@@ -179,9 +126,27 @@ impl NonMembershipTree {
     /// - `MerklePathError::LeavesOverflow` if the number of leaves exceeds `u32::MAX`.
     /// - `MerklePathError::Unexpected` if the merkle root cannot be computed after construction.
     pub fn from_nullifiers(nullifiers: &SanitiseNullifiers) -> Result<Self, MerklePathError> {
-        // Create leaves as an iterator (lazy evaluation)
-        let leaves = NullifierLeafIterator::new(nullifiers);
-        Self::from_leaves(leaves)
+        Self::from_nullifiers_with_progress(nullifiers, |_, _| {})
+    }
+
+    /// Build a non-membership tree from nullifiers (no positions marked), with progress callback.
+    ///
+    /// Calls `on_progress(current, total)` after each leaf is appended.
+    ///
+    /// # Errors
+    /// - `MerklePathError::LeavesOverflow` if the number of leaves exceeds `u32::MAX`.
+    /// - `MerklePathError::Unexpected` if the merkle root cannot be computed after construction.
+    pub fn from_nullifiers_with_progress(
+        nullifiers: &SanitiseNullifiers,
+        on_progress: impl FnMut(usize, usize),
+    ) -> Result<Self, MerklePathError> {
+        let empty_user = SanitiseNullifiers::new(vec![]);
+        let (tree, _mapping) = Self::from_chain_and_user_nullifiers_with_progress(
+            nullifiers,
+            &empty_user,
+            on_progress,
+        )?;
+        Ok(tree)
     }
 
     /// Build a non-membership tree, automatically marking leaves containing user nullifiers.
@@ -207,6 +172,26 @@ impl NonMembershipTree {
         chain_nullifiers: &SanitiseNullifiers,
         user_nullifiers: &SanitiseNullifiers,
     ) -> Result<(Self, Vec<TreePosition>), MerklePathError> {
+        Self::from_chain_and_user_nullifiers_with_progress(
+            chain_nullifiers,
+            user_nullifiers,
+            |_, _| {},
+        )
+    }
+
+    /// Build a non-membership tree with progress reporting, automatically marking
+    /// leaves containing user nullifiers.
+    ///
+    /// Calls `on_progress(current, total)` after each leaf is appended.
+    ///
+    /// # Errors
+    /// Returns `MerklePathError::PositionConversionError` if leaf position exceeds `Position`
+    /// bounds.
+    pub fn from_chain_and_user_nullifiers_with_progress(
+        chain_nullifiers: &SanitiseNullifiers,
+        user_nullifiers: &SanitiseNullifiers,
+        mut on_progress: impl FnMut(usize, usize),
+    ) -> Result<(Self, Vec<TreePosition>), MerklePathError> {
         // Build tree, marking leaves as we go based on user nullifiers
         let mut tree: BridgeTree<NonMembershipNode, (), { NON_MEMBERSHIP_TREE_DEPTH }> =
             BridgeTree::new(1);
@@ -218,6 +203,10 @@ impl NonMembershipTree {
 
         // Iterate through gaps
         let num_gaps = chain_nullifiers.len().saturating_add(1);
+        let mut last_progress_pct = 0_usize;
+        if num_gaps > 0 {
+            on_progress(0, num_gaps);
+        }
         for gap_idx in 0..num_gaps {
             let Gap { left, right } = gap_bounds(chain_nullifiers, gap_idx);
             let leaf = NonMembershipNode::leaf_from_nullifiers(&left, &right);
@@ -251,6 +240,9 @@ impl NonMembershipTree {
             }
 
             leaf_count = leaf_count.saturating_add(1);
+            if should_report_progress(leaf_count, num_gaps, &mut last_progress_pct) {
+                on_progress(leaf_count, num_gaps);
+            }
         }
 
         // Checkpoint the final state
@@ -397,6 +389,10 @@ fn gap_bounds(nullifiers: &[Nullifier], gap_idx: usize) -> Gap {
 /// - First gap: `(MIN, nullifiers[0])`
 /// - Last gap: `(nullifiers[n-1], MAX)`
 /// - Gaps in between First and Last: `(nullifiers[i], nullifiers[i+1])` for `i` in 0..`n`-i
+#[allow(
+    dead_code,
+    reason = "Used by test-only leaf-construction path retained for unit tests"
+)]
 struct NullifierLeafIterator<'a> {
     nullifiers: &'a [Nullifier],
     index: usize,
@@ -404,6 +400,10 @@ struct NullifierLeafIterator<'a> {
 }
 
 impl<'a> NullifierLeafIterator<'a> {
+    #[allow(
+        dead_code,
+        reason = "Used by test-only leaf-construction path retained for unit tests"
+    )]
     const fn new(nullifiers: &'a [Nullifier]) -> Self {
         Self {
             nullifiers,
@@ -447,9 +447,23 @@ impl ExactSizeIterator for NullifierLeafIterator<'_> {}
 
 #[cfg(test)]
 mod tests {
-    use test_utils::{nf, nfs};
-
     use super::*;
+
+    macro_rules! nf {
+        ($v:expr) => {{
+            let mut arr = [0_u8; 32];
+            arr[31] = $v;
+            arr.into()
+        }};
+    }
+
+    macro_rules! nfs {
+        ($($v:expr),* $(,)?) => {{
+            let mut v = vec![$( nf!($v) ),*];
+            v.sort();
+            v
+        }};
+    }
 
     fn make_leaf(value: u8) -> NonMembershipNode {
         let mut bytes = [0u8; 32];

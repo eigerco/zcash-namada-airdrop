@@ -47,27 +47,56 @@ pub struct SaplingSignedClaim {
     pub cv_sha256: Option<[u8; 32]>,
     /// Airdrop nullifier used for double-claim prevention.
     pub airdrop_nullifier: Nullifier,
+    /// Hash of this claim's unsigned proof fields.
+    #[serde_as(as = "Hex")]
+    pub proof_hash: [u8; 32],
+    /// Hash of this claim's external message payload.
+    #[serde_as(as = "Hex")]
+    pub message_hash: [u8; 32],
     /// Spend authorization signature over the submission digest.
     #[serde_as(as = "Hex")]
     pub spend_auth_sig: [u8; 64],
 }
 
-/// Signed proof bundle and digest context for submission.
+/// A signed Orchard claim entry ready for target-chain submission.
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchardSignedClaim {
+    /// The Halo2 proof bytes.
+    #[serde_as(as = "Hex")]
+    pub zkproof: Vec<u8>,
+    /// The randomized spend verification key.
+    #[serde_as(as = "Hex")]
+    pub rk: [u8; 32],
+    /// Native value commitment bytes, if the active scheme is native.
+    #[serde_as(as = "Option<Hex>")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cv: Option<[u8; 32]>,
+    /// SHA-256 value commitment bytes, if the active scheme is sha256.
+    #[serde_as(as = "Option<Hex>")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cv_sha256: Option<[u8; 32]>,
+    /// Airdrop nullifier used for double-claim prevention.
+    pub airdrop_nullifier: Nullifier,
+    /// Hash of this claim's unsigned proof fields.
+    #[serde_as(as = "Hex")]
+    pub proof_hash: [u8; 32],
+    /// Hash of this claim's external message payload.
+    #[serde_as(as = "Hex")]
+    pub message_hash: [u8; 32],
+    /// Spend authorization signature over the submission digest.
+    #[serde_as(as = "Hex")]
+    pub spend_auth_sig: [u8; 64],
+}
+
+/// Signed claims grouped by pool for submission.
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimSubmission {
-    /// Pool this submission applies to.
-    pub pool: SubmissionPool,
-    /// Target domain identifier from airdrop configuration.
-    pub target_id: String,
-    /// Hash of the unsigned proof bundle.
-    #[serde_as(as = "Hex")]
-    pub proof_hash: [u8; 32],
-    /// Hash of external message bytes.
-    #[serde_as(as = "Hex")]
-    pub message_hash: [u8; 32],
     /// Signed Sapling claims.
+    #[serde(default)]
     pub sapling: Vec<SaplingSignedClaim>,
-    /// Signed Orchard claims (not implemented yet).
-    pub orchard: Vec<()>,
+    /// Signed Orchard claims.
+    #[serde(default)]
+    pub orchard: Vec<OrchardSignedClaim>,
 }

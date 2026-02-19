@@ -14,15 +14,15 @@ pub use crate::types::{
 /// Errors that can occur during claim proof verification.
 #[derive(Debug, thiserror::Error)]
 pub enum VerificationError {
-    /// Invalid anchor value
-    #[error("Invalid anchor: not a valid scalar")]
-    InvalidAnchor,
-    /// Invalid non-membership anchor value
-    #[error("Invalid nm_anchor: not a valid scalar")]
-    InvalidNmAnchor,
-    /// Invalid hiding nullifier value
-    #[error("Invalid hiding nullifier: not a valid scalar")]
-    InvalidHidingNullifier,
+    /// Invalid note commitment root value
+    #[error("Invalid note commitment root: not a valid scalar")]
+    InvalidNoteCommitmentRoot,
+    /// Invalid nullifier gap root value
+    #[error("Invalid nullifier gap root: not a valid scalar")]
+    InvalidNullifierGapRoot,
+    /// Invalid airdrop nullifier value
+    #[error("Invalid airdrop nullifier: not a valid scalar")]
+    InvalidAirdropNullifier,
     /// Point parsing failed
     #[error("Point parsing failed")]
     InvalidPoint,
@@ -47,8 +47,8 @@ pub enum VerificationError {
 ///
 /// Note: The Zcash nullifier is NOT included as a public input to preserve privacy.
 /// The circuit computes it internally but does not expose it.
-/// The hiding nullifier IS included for airdrop double-claim prevention.
-/// The `nm_anchor` IS included for non-membership verification.
+/// The airdrop nullifier IS included for double-claim prevention.
+/// The `nullifier_gap_root` IS included for non-membership verification.
 #[derive(Debug, Clone)]
 pub struct ClaimPublicInputs {
     /// The re-randomized spend verification key (rk)
@@ -59,12 +59,12 @@ pub struct ClaimPublicInputs {
     pub cv: Option<jubjub::AffinePoint>,
     /// SHA-256 value commitment (`cv_sha256`), when using the `sha256` scheme.
     pub cv_sha256: Option<[u8; 32]>,
-    /// The anchor (merkle tree root)
-    pub anchor: bls12_381::Scalar,
-    /// The hiding nullifier (airdrop-specific, 32 bytes)
-    pub hiding_nf: [u8; 32],
+    /// The note commitment root (merkle tree root)
+    pub note_commitment_root: bls12_381::Scalar,
+    /// The airdrop nullifier (airdrop-specific, 32 bytes)
+    pub airdrop_nullifier: [u8; 32],
     /// The non-membership tree root
-    pub nm_anchor: bls12_381::Scalar,
+    pub nullifier_gap_root: bls12_381::Scalar,
 }
 
 impl ClaimPublicInputs {
@@ -77,9 +77,9 @@ impl ClaimPublicInputs {
         rk: &[u8; 32],
         cv: Option<&[u8; 32]>,
         cv_sha256: Option<&[u8; 32]>,
-        anchor: &[u8; 32],
-        hiding_nf: &[u8; 32],
-        nm_anchor: &[u8; 32],
+        note_commitment_root: &[u8; 32],
+        airdrop_nullifier: &[u8; 32],
+        nullifier_gap_root: &[u8; 32],
     ) -> Result<Self, VerificationError> {
         let rk = parse_point(rk)?;
         let cv = match value_commitment_scheme {
@@ -94,39 +94,40 @@ impl ClaimPublicInputs {
                 Some(*cv_sha256.ok_or(VerificationError::MissingCvSha256)?)
             }
         };
-        let anchor = bls12_381::Scalar::from_bytes(anchor)
+        let note_commitment_root = bls12_381::Scalar::from_bytes(note_commitment_root)
             .into_option()
-            .ok_or(VerificationError::InvalidAnchor)?;
-        let nm_anchor = bls12_381::Scalar::from_bytes(nm_anchor)
+            .ok_or(VerificationError::InvalidNoteCommitmentRoot)?;
+        let nullifier_gap_root = bls12_381::Scalar::from_bytes(nullifier_gap_root)
             .into_option()
-            .ok_or(VerificationError::InvalidNmAnchor)?;
+            .ok_or(VerificationError::InvalidNullifierGapRoot)?;
         Ok(Self {
             rk,
             value_commitment_scheme,
             cv,
             cv_sha256,
-            anchor,
-            hiding_nf: *hiding_nf,
-            nm_anchor,
+            note_commitment_root,
+            airdrop_nullifier: *airdrop_nullifier,
+            nullifier_gap_root,
         })
     }
 
     /// Converts public inputs to the vector format expected by the verifier.
     ///
-    /// The format is: `[rk.u, rk.v, cv.u, cv.v, anchor, hiding_nf_0, hiding_nf_1, nm_anchor]`
+    /// The format is: `[rk.u, rk.v, cv.u, cv.v, note_commitment_root, airdrop_nf_0, airdrop_nf_1,
+    /// nullifier_gap_root]`
     ///
     /// # Errors
-    /// Returns an error if the hiding nullifier cannot be packed into exactly 2 scalars.
+    /// Returns an error if the airdrop nullifier cannot be packed into exactly 2 scalars.
     pub fn to_vec(&self) -> Result<Vec<bls12_381::Scalar>, VerificationError> {
-        // Pack hiding nullifier into scalars using bellman's multipack (same as circuit does)
-        let hiding_nf_bits = multipack::bytes_to_bits_le(&self.hiding_nf);
-        let hiding_nf_packed = multipack::compute_multipacking(&hiding_nf_bits);
+        // Pack airdrop nullifier into scalars using bellman's multipack (same as circuit does)
+        let airdrop_nf_bits = multipack::bytes_to_bits_le(&self.airdrop_nullifier);
+        let airdrop_nf_packed = multipack::compute_multipacking(&airdrop_nf_bits);
 
-        let hiding_nf_0 = hiding_nf_packed.first().copied().ok_or(
-            VerificationError::UnexpectedMultipackLength(hiding_nf_packed.len()),
+        let airdrop_nf_0 = airdrop_nf_packed.first().copied().ok_or(
+            VerificationError::UnexpectedMultipackLength(airdrop_nf_packed.len()),
         )?;
-        let hiding_nf_1 = hiding_nf_packed.get(1).copied().ok_or(
-            VerificationError::UnexpectedMultipackLength(hiding_nf_packed.len()),
+        let airdrop_nf_1 = airdrop_nf_packed.get(1).copied().ok_or(
+            VerificationError::UnexpectedMultipackLength(airdrop_nf_packed.len()),
         )?;
 
         let mut out = vec![self.rk.get_u(), self.rk.get_v()];
@@ -154,7 +155,12 @@ impl ClaimPublicInputs {
             }
         }
 
-        out.extend([self.anchor, hiding_nf_0, hiding_nf_1, self.nm_anchor]);
+        out.extend([
+            self.note_commitment_root,
+            airdrop_nf_0,
+            airdrop_nf_1,
+            self.nullifier_gap_root,
+        ]);
         Ok(out)
     }
 }
@@ -196,7 +202,7 @@ pub fn decode_proof(bytes: &GrothProofBytes) -> Result<Proof<Bls12>, ClaimProofE
 /// * `rk` - The re-randomized verification key bytes (32 bytes)
 /// * `cv` - The value commitment bytes (32 bytes)
 /// * `note_commitment_root` - The note commitment root bytes (32 bytes)
-/// * `hiding_nf` - The hiding nullifier bytes (32 bytes)
+/// * `airdrop_nullifier` - The airdrop nullifier bytes (32 bytes)
 /// * `nullifier_gap_root` - The non-membership tree root bytes (32 bytes)
 ///
 /// # Errors
@@ -213,7 +219,7 @@ pub fn verify_claim_proof_bytes(
     cv: Option<&[u8; 32]>,
     cv_sha256: Option<&[u8; 32]>,
     note_commitment_root: &[u8; 32],
-    hiding_nf: &[u8; 32],
+    airdrop_nullifier: &[u8; 32],
     nullifier_gap_root: &[u8; 32],
 ) -> Result<(), VerificationError> {
     let proof =
@@ -224,7 +230,7 @@ pub fn verify_claim_proof_bytes(
         cv,
         cv_sha256,
         note_commitment_root,
-        hiding_nf,
+        airdrop_nullifier,
         nullifier_gap_root,
     )?;
     verify_claim_proof(pvk, &proof, &public_inputs)
@@ -252,7 +258,7 @@ pub fn verify_claim_proof_output(
         proof_output.cv.as_ref(),
         proof_output.cv_sha256.as_ref(),
         note_commitment_root,
-        &proof_output.hiding_nf,
+        &proof_output.airdrop_nullifier,
         nullifier_gap_root,
     )
 }

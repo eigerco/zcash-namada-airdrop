@@ -36,8 +36,9 @@ impl From<zair_core::schema::config::ValueCommitmentScheme> for ValueCommitmentS
 
 /// Input data required to generate a claim proof (raw bytes format).
 ///
-/// This struct provides a convenient way to pass proof inputs as raw bytes,
-/// which is useful when reading from JSON files or network protocols.
+/// The caller generates witness randomness (`alpha`, `rcv`, `rcv_sha256`) before calling
+/// the prover. The prover deterministically computes derived public values (`rk`, `cv`,
+/// `cv_sha256`) for inclusion in the proof output.
 #[derive(Debug, Clone)]
 pub struct ClaimProofInputs {
     /// Diversifier (11 bytes)
@@ -48,16 +49,14 @@ pub struct ClaimProofInputs {
     pub value: u64,
     /// Note commitment randomness rcm (32 bytes)
     pub rcm: [u8; 32],
-    /// Authorization key ak (32 bytes)
-    pub ak: [u8; 32],
     /// Position of the note in the commitment tree
     pub position: u64,
     /// Merkle proof path (32 siblings for depth-32 tree)
     pub merkle_path: Vec<[u8; 32]>,
-    /// Expected note-commitment root (Sapling anchor) for this claim.
-    pub anchor: [u8; 32],
-    /// The hiding nullifier (computed externally via sapling's `nf_hiding`)
-    pub hiding_nf: [u8; 32],
+    /// Expected note-commitment tree root for this claim.
+    pub note_commitment_root: [u8; 32],
+    /// The airdrop nullifier (computed externally)
+    pub airdrop_nullifier: [u8; 32],
     /// Left nullifier bound of the non-membership gap
     pub nm_left_nf: [u8; 32],
     /// Right nullifier bound of the non-membership gap
@@ -65,16 +64,22 @@ pub struct ClaimProofInputs {
     /// Non-membership merkle path (siblings and position flags)
     pub nm_merkle_path: Vec<([u8; 32], bool)>,
     /// Non-membership tree root
-    pub nm_anchor: [u8; 32],
+    pub nullifier_gap_root: [u8; 32],
     /// Which value commitment scheme to prove.
     pub value_commitment_scheme: ValueCommitmentScheme,
+    /// Spend authorization randomizer `alpha` (canonical scalar encoding).
+    pub alpha: [u8; 32],
+    /// Value commitment trapdoor `rcv` (canonical scalar encoding).
+    pub rcv: [u8; 32],
+    /// SHA-256 value commitment randomness bytes, `None` for native scheme.
+    pub rcv_sha256: Option<[u8; 32]>,
 }
 
 /// Output from generating a claim proof.
 ///
 /// Note: The Zcash nullifier is NOT included to preserve privacy.
 /// The circuit proves knowledge of the nullifier without exposing it.
-/// The hiding nullifier IS included for airdrop double-claim prevention.
+/// The airdrop nullifier IS included for double-claim prevention.
 #[derive(Debug, Clone)]
 pub struct ClaimProofOutput {
     /// The Groth16 proof (192 bytes)
@@ -85,17 +90,6 @@ pub struct ClaimProofOutput {
     pub cv: Option<[u8; 32]>,
     /// The SHA-256 value commitment (`cv_sha256`), if this proof uses the `sha256` scheme.
     pub cv_sha256: Option<[u8; 32]>,
-    /// The hiding nullifier (airdrop-specific, 32 bytes)
-    pub hiding_nf: [u8; 32],
-}
-
-/// Local-only randomness material produced while generating a claim proof.
-#[derive(Debug, Clone)]
-pub struct ClaimProofSecretMaterial {
-    /// Spend authorization randomizer used for rk/signature binding.
-    pub alpha: [u8; 32],
-    /// Randomness for the native commitment.
-    pub rcv: Option<[u8; 32]>,
-    /// Randomness for the sha256 commitment.
-    pub rcv_sha256: Option<[u8; 32]>,
+    /// The airdrop nullifier (airdrop-specific, 32 bytes)
+    pub airdrop_nullifier: [u8; 32],
 }

@@ -12,7 +12,9 @@ use zair_scan::ViewingKeys;
 use zair_scan::scanner::AccountNotesVisitor;
 use zair_scan::user_nullifiers::NoteNullifier as _;
 
-use super::note_metadata::{NoteMetadata, OrchardNoteMetadata, SaplingNoteMetadata};
+use super::note_metadata::{
+    NoteMetadata, OrchardNoteMetadata, SaplingNoteMetadata, orchard_g_d_from_diversifier,
+};
 
 /// Result of processing claims for a single pool.
 pub struct PoolClaimResult<P> {
@@ -39,6 +41,8 @@ pub trait PoolProcessor {
 
     /// The pool name for logging.
     const POOL_NAME: &'static str;
+    /// Whether this pool uses the Orchard Sinsemilla non-membership tree.
+    const USE_ORCHARD_NONMEMBERSHIP: bool;
 
     /// Returns the expected merkle root from the airdrop configuration.
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]>;
@@ -60,6 +64,7 @@ impl PoolProcessor for SaplingPool {
     type Metadata = SaplingNoteMetadata;
 
     const POOL_NAME: &'static str = "Sapling";
+    const USE_ORCHARD_NONMEMBERSHIP: bool = false;
 
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
         config.sapling.as_ref().map(|pool| pool.nullifier_gap_root)
@@ -123,6 +128,7 @@ impl PoolProcessor for OrchardPool {
     type Metadata = OrchardNoteMetadata;
 
     const POOL_NAME: &'static str = "Orchard";
+    const USE_ORCHARD_NONMEMBERSHIP: bool = true;
 
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
         config.orchard.as_ref().map(|pool| pool.nullifier_gap_root)
@@ -160,11 +166,25 @@ impl PoolProcessor for OrchardPool {
                     )
                 })?;
 
+            let address = found_note.note.recipient();
+            let diversifier = address.diversifier();
+            let raw_addr = address.to_raw_address_bytes();
+            let pk_d: [u8; 32] = raw_addr[11..43]
+                .try_into()
+                .map_err(|_| eyre::eyre!("Invalid Orchard raw address bytes"))?;
+            let g_d = orchard_g_d_from_diversifier(diversifier.as_array());
+
             notes.insert(
                 nullifier,
                 OrchardNoteMetadata {
                     hiding_nullifier,
-                    note_commitment: found_note.note_commitment(),
+                    rho: found_note.note.rho().to_bytes(),
+                    rseed: *found_note.note.rseed().as_bytes(),
+                    g_d,
+                    pk_d,
+                    value: found_note.note.value().inner(),
+                    note_position: found_note.metadata.position,
+                    scope: found_note.metadata.scope,
                     block_height: found_note.metadata.height,
                     cm_merkle_proof,
                 },

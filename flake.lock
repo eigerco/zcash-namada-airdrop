@@ -75,6 +75,23 @@
         "type": "github"
       }
     },
+    "halo2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1734374979,
+        "narHash": "sha256-gN2ktfTKQr+J16IZJKeqciRkMsUXQ8/v5u9MqAJQ9PA=",
+        "owner": "zcash",
+        "repo": "halo2",
+        "rev": "3bb6f5ccbcdc3d285babcea09925a741a4452281",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zcash",
+        "repo": "halo2",
+        "rev": "3bb6f5ccbcdc3d285babcea09925a741a4452281",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1764947035,
@@ -175,6 +192,7 @@
       "inputs": {
         "flake-parts": "flake-parts",
         "git-hooks-nix": "git-hooks-nix",
+        "halo2": "halo2",
         "nixpkgs": "nixpkgs_2",
         "orchard": "orchard",
         "rust-overlay": "rust-overlay",

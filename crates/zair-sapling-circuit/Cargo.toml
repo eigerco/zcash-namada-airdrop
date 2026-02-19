@@ -12,6 +12,7 @@ bls12_381 = { workspace = true }
 group = { workspace = true }
 jubjub = { workspace = true }
 sapling = { workspace = true, features = ["circuit"] }
+zair-core = { workspace = true }
 
 [dev-dependencies]
 rand_core = { workspace = true }

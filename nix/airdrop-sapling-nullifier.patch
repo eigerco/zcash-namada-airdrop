@@ -99,7 +99,7 @@ index eabf17a..99ff424 100644
 +    prf_nf_hiding(nk, rho, PRF_NF_PERSONALIZATION)
 +}
 +
-+/// TODO: add docs
++/// prf_nf with custom personalization
 +pub(crate) fn prf_nf_hiding(
 +    nk: &jubjub::SubgroupPoint,
 +    rho: &jubjub::SubgroupPoint,

@@ -14,8 +14,9 @@ Thumbs.db
 # Nix
 result
 result-*
-.patched-orchard
 .patched-sapling-crypto
+.patched-orchard
+.patched-halo2-gadgets
 
 # Environment files
 .env

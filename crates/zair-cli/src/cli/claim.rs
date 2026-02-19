@@ -2,6 +2,10 @@
 
 use std::path::PathBuf;
 
+use zair_sdk::commands::{GapTreeMode, OrchardParamsMode};
+
+use super::{parse_gap_tree_mode, parse_orchard_params_mode};
+
 /// Arguments for the end-to-end claim pipeline.
 #[cfg(feature = "prove")]
 #[derive(Debug, clap::Args)]
@@ -17,14 +21,12 @@ pub struct ClaimRunArgs {
     /// Path to file containing 64-byte seed as hex.
     #[arg(long, env = "SEED_FILE", value_name = "SEED_FILE")]
     pub seed: PathBuf,
-    /// Message payload file to bind into submission signatures.
-    #[arg(
-        long,
-        env = "MESSAGE_FILE",
-        value_name = "MESSAGE_FILE",
-        default_value = "claim-message.bin"
-    )]
-    pub msg: PathBuf,
+    /// Shared message payload file fallback used for claim signatures.
+    #[arg(long = "message", env = "MESSAGE_FILE", value_name = "MESSAGE_FILE")]
+    pub message: Option<PathBuf>,
+    /// Per-claim message assignments JSON.
+    #[arg(long = "messages", env = "MESSAGES_FILE", value_name = "MESSAGES_FILE")]
+    pub messages: Option<PathBuf>,
     /// Sapling snapshot nullifiers file.
     /// Defaults to `snapshot-sapling.bin` when Sapling is enabled in config.
     #[arg(long, env = "SNAPSHOT_SAPLING_FILE")]
@@ -33,14 +35,45 @@ pub struct ClaimRunArgs {
     /// Defaults to `snapshot-orchard.bin` when Orchard is enabled in config.
     #[arg(long, env = "SNAPSHOT_ORCHARD_FILE")]
     pub snapshot_orchard: Option<PathBuf>,
-    /// Path to proving key file.
+    /// Sapling gap-tree file. Defaults to `gaptree-sapling.bin` when Sapling is enabled.
+    #[arg(long, env = "GAP_TREE_SAPLING_FILE", visible_alias = "gaptree-sapling")]
+    pub gap_tree_sapling: Option<PathBuf>,
+    /// Orchard gap-tree file. Defaults to `gaptree-orchard.bin` when Orchard is enabled.
+    #[arg(long, env = "GAP_TREE_ORCHARD_FILE", visible_alias = "gaptree-orchard")]
+    pub gap_tree_orchard: Option<PathBuf>,
+    /// Gap-tree mode: `none` (require files), `rebuild` (recompute and persist), `sparse`
+    /// (in-memory only).
     #[arg(
         long,
-        env = "PROVING_KEY_FILE",
-        value_name = "PROVING_KEY_FILE",
+        env = "GAP_TREE_MODE",
+        default_value = "none",
+        value_parser = parse_gap_tree_mode
+    )]
+    pub gap_tree_mode: GapTreeMode,
+    /// Path to Sapling proving key file.
+    #[arg(
+        long = "sapling-pk",
+        env = "SAPLING_PK_FILE",
+        value_name = "SAPLING_PK_FILE",
         default_value = "setup-sapling-pk.params"
     )]
-    pub pk: PathBuf,
+    pub sapling_pk: PathBuf,
+    /// Path to the Orchard Halo2 params file.
+    #[arg(
+        long,
+        env = "ORCHARD_PARAMS_FILE",
+        value_name = "ORCHARD_PARAMS_FILE",
+        default_value = "setup-orchard-params.bin"
+    )]
+    pub orchard_params: PathBuf,
+    /// Orchard params handling mode: `require` (fail if missing) or `auto` (generate and persist).
+    #[arg(
+        long,
+        env = "ORCHARD_PARAMS_MODE",
+        default_value = "auto",
+        value_parser = parse_orchard_params_mode
+    )]
+    pub orchard_params_mode: OrchardParamsMode,
     /// ZIP-32 account index used to derive Sapling keys from the seed.
     #[arg(long, env = "ACCOUNT_ID", default_value_t = 0_u32)]
     pub account: u32,
@@ -75,9 +108,9 @@ pub struct ClaimPrepareArgs {
         default_value = "config.json"
     )]
     pub config: PathBuf,
-    /// Unified Full Viewing Key to scan for notes.
-    #[arg(long, env = "UFVK")]
-    pub ufvk: String,
+    /// File containing the Unified Full Viewing Key (bech32).
+    #[arg(long, env = "UFVK_FILE", default_value = "ufvk.txt")]
+    pub ufvk: PathBuf,
     /// Sapling snapshot nullifiers file.
     /// Defaults to `snapshot-sapling.bin` when Sapling is enabled in config.
     #[arg(long, env = "SNAPSHOT_SAPLING_FILE")]
@@ -86,6 +119,21 @@ pub struct ClaimPrepareArgs {
     /// Defaults to `snapshot-orchard.bin` when Orchard is enabled in config.
     #[arg(long, env = "SNAPSHOT_ORCHARD_FILE")]
     pub snapshot_orchard: Option<PathBuf>,
+    /// Sapling gap-tree file. Defaults to `gaptree-sapling.bin` when Sapling is enabled.
+    #[arg(long, env = "GAP_TREE_SAPLING_FILE", visible_alias = "gaptree-sapling")]
+    pub gap_tree_sapling: Option<PathBuf>,
+    /// Orchard gap-tree file. Defaults to `gaptree-orchard.bin` when Orchard is enabled.
+    #[arg(long, env = "GAP_TREE_ORCHARD_FILE", visible_alias = "gaptree-orchard")]
+    pub gap_tree_orchard: Option<PathBuf>,
+    /// Gap-tree mode: `none` (require files), `rebuild` (recompute and persist), `sparse`
+    /// (in-memory only).
+    #[arg(
+        long,
+        env = "GAP_TREE_MODE",
+        default_value = "none",
+        value_parser = parse_gap_tree_mode
+    )]
+    pub gap_tree_mode: GapTreeMode,
     /// Scan start height for note discovery.
     #[arg(long, env = "BIRTHDAY")]
     pub birthday: u64,
@@ -115,14 +163,30 @@ pub struct ClaimProveArgs {
     /// Path to file containing 64-byte seed as hex for deriving spending keys.
     #[arg(long, env = "SEED_FILE", value_name = "SEED_FILE")]
     pub seed: PathBuf,
-    /// Path to proving key file.
+    /// Path to Sapling proving key file.
     #[arg(
-        long,
-        env = "PROVING_KEY_FILE",
-        value_name = "PROVING_KEY_FILE",
+        long = "sapling-pk",
+        env = "SAPLING_PK_FILE",
+        value_name = "SAPLING_PK_FILE",
         default_value = "setup-sapling-pk.params"
     )]
-    pub pk: PathBuf,
+    pub sapling_pk: PathBuf,
+    /// Path to the Orchard Halo2 params file.
+    #[arg(
+        long,
+        env = "ORCHARD_PARAMS_FILE",
+        value_name = "ORCHARD_PARAMS_FILE",
+        default_value = "setup-orchard-params.bin"
+    )]
+    pub orchard_params: PathBuf,
+    /// Orchard params handling mode: `require` (fail if missing) or `auto` (generate and persist).
+    #[arg(
+        long,
+        env = "ORCHARD_PARAMS_MODE",
+        default_value = "auto",
+        value_parser = parse_orchard_params_mode
+    )]
+    pub orchard_params_mode: OrchardParamsMode,
     /// ZIP-32 account index used to derive Sapling keys from the seed.
     #[arg(long, env = "ACCOUNT_ID", default_value_t = 0_u32)]
     pub account: u32,
@@ -154,15 +218,13 @@ pub struct ClaimSignArgs {
     /// Path to file containing 64-byte seed as hex for deriving spending keys.
     #[arg(long, env = "SEED_FILE", value_name = "SEED_FILE")]
     pub seed: PathBuf,
-    /// Message payload file to bind into submission signatures.
-    #[arg(
-        long,
-        env = "MESSAGE_FILE",
-        value_name = "MESSAGE_FILE",
-        default_value = "claim-message.bin"
-    )]
-    pub msg: PathBuf,
-    /// ZIP-32 account index used to derive Sapling keys from the seed.
+    /// Shared message payload file fallback used for claim signatures.
+    #[arg(long = "message", env = "MESSAGE_FILE", value_name = "MESSAGE_FILE")]
+    pub message: Option<PathBuf>,
+    /// Per-claim message assignments JSON.
+    #[arg(long = "messages", env = "MESSAGES_FILE", value_name = "MESSAGES_FILE")]
+    pub messages: Option<PathBuf>,
+    /// ZIP-32 account index used to derive spend-auth keys from the seed.
     #[arg(long, env = "ACCOUNT_ID", default_value_t = 0_u32)]
     pub account: u32,
     /// Output file for signed submission bundle.
@@ -176,6 +238,12 @@ pub enum ClaimCommands {
     /// Recommended end-to-end claim pipeline:
     /// `prepare -> prove -> sign`.
     #[cfg(feature = "prove")]
+    #[command(group(
+        clap::ArgGroup::new("message_input")
+            .args(["message", "messages"])
+            .required(true)
+            .multiple(true)
+    ))]
     Run {
         #[command(flatten)]
         args: ClaimRunArgs,
@@ -192,7 +260,13 @@ pub enum ClaimCommands {
         #[command(flatten)]
         args: ClaimProveArgs,
     },
-    /// Sign a Sapling proof bundle into a submission package.
+    /// Sign claim proofs into a submission package.
+    #[command(group(
+        clap::ArgGroup::new("message_input")
+            .args(["message", "messages"])
+            .required(true)
+            .multiple(true)
+    ))]
     Sign {
         #[command(flatten)]
         args: ClaimSignArgs,

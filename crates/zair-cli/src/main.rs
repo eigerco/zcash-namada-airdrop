@@ -5,8 +5,9 @@ mod cli;
 use clap::Parser as _;
 #[cfg(feature = "prove")]
 use cli::SetupCommands;
-use cli::{ClaimCommands, Cli, Commands, ConfigCommands, VerifyCommands};
-use zair_sdk::commands::{airdrop_claim, build_airdrop_configuration};
+use cli::{ClaimCommands, Cli, Commands, ConfigCommands, KeyCommands, VerifyCommands};
+use eyre::Context as _;
+use zair_sdk::commands::build_airdrop_configuration;
 
 fn init_tracing() -> eyre::Result<()> {
     #[cfg(feature = "tokio-console")]
@@ -62,11 +63,14 @@ async fn main() -> eyre::Result<()> {
     let res = match cli.command {
         #[cfg(feature = "prove")]
         Commands::Setup { command } => match command {
-            SetupCommands::Local {
+            SetupCommands::Sapling {
                 scheme,
                 pk_out,
                 vk_out,
             } => zair_sdk::commands::generate_claim_params(pk_out, vk_out, scheme).await,
+            SetupCommands::Orchard { scheme, params_out } => {
+                zair_sdk::commands::generate_orchard_params(params_out, scheme).await
+            }
         },
         Commands::Config { command } => match command {
             ConfigCommands::Build { args } => {
@@ -76,6 +80,9 @@ async fn main() -> eyre::Result<()> {
                     args.config_out,
                     args.snapshot_out_sapling,
                     args.snapshot_out_orchard,
+                    args.gap_tree_out_sapling,
+                    args.gap_tree_out_orchard,
+                    args.no_gap_tree,
                     args.target_sapling,
                     args.scheme_sapling,
                     args.target_orchard,
@@ -91,6 +98,9 @@ async fn main() -> eyre::Result<()> {
                     args.lightwalletd,
                     args.snapshot_sapling,
                     args.snapshot_orchard,
+                    args.gap_tree_sapling,
+                    args.gap_tree_orchard,
+                    args.gap_tree_mode,
                     args.birthday,
                     args.claims_out,
                     args.proofs_out,
@@ -98,18 +108,27 @@ async fn main() -> eyre::Result<()> {
                     args.submission_out,
                     args.seed,
                     args.account,
-                    args.pk,
-                    args.msg,
+                    args.sapling_pk,
+                    args.orchard_params,
+                    args.orchard_params_mode,
+                    args.message,
+                    args.messages,
                     args.config,
                 )
                 .await
             }
             ClaimCommands::Prepare { args } => {
-                airdrop_claim(
+                let ufvk = tokio::fs::read_to_string(&args.ufvk)
+                    .await
+                    .with_context(|| format!("Failed to read UFVK file {}", args.ufvk.display()))?;
+                zair_sdk::commands::airdrop_claim(
                     args.lightwalletd,
                     args.snapshot_sapling,
                     args.snapshot_orchard,
-                    args.ufvk,
+                    args.gap_tree_sapling,
+                    args.gap_tree_orchard,
+                    args.gap_tree_mode,
+                    ufvk.trim().to_owned(),
                     args.birthday,
                     args.claims_out,
                     args.config,
@@ -123,7 +142,9 @@ async fn main() -> eyre::Result<()> {
                     args.proofs_out,
                     args.seed,
                     args.account,
-                    args.pk,
+                    args.sapling_pk,
+                    args.orchard_params,
+                    args.orchard_params_mode,
                     args.secrets_out,
                     args.config,
                 )
@@ -136,7 +157,8 @@ async fn main() -> eyre::Result<()> {
                     args.seed,
                     args.account,
                     args.config,
-                    args.msg,
+                    args.message,
+                    args.messages,
                     args.submission_out,
                 )
                 .await
@@ -144,18 +166,67 @@ async fn main() -> eyre::Result<()> {
         },
         Commands::Verify { command } => match command {
             VerifyCommands::Run { args } => {
-                zair_sdk::commands::verify_run(args.vk, args.submission_in, args.msg, args.config)
-                    .await
+                zair_sdk::commands::verify_run(
+                    args.sapling_vk,
+                    args.orchard_params,
+                    args.orchard_params_mode,
+                    args.submission_in,
+                    args.message,
+                    args.messages,
+                    args.config,
+                )
+                .await
             }
             VerifyCommands::Proof { args } => {
-                zair_sdk::commands::verify_claim_sapling_proof(args.proofs_in, args.vk, args.config)
-                    .await
+                zair_sdk::commands::verify_claim_proofs(
+                    args.proofs_in,
+                    args.sapling_vk,
+                    args.orchard_params,
+                    args.orchard_params_mode,
+                    args.config,
+                )
+                .await
             }
             VerifyCommands::Signature { args } => {
                 zair_sdk::commands::verify_claim_submission_signature(
                     args.submission_in,
-                    args.msg,
+                    args.message,
+                    args.messages,
                     args.config,
+                )
+                .await
+            }
+        },
+        Commands::Key { command } => match command {
+            KeyCommands::DeriveSeed { args } => {
+                let mnemonic_source = if args.mnemonic_stdin {
+                    zair_sdk::commands::MnemonicSource::Stdin
+                } else if let Some(path) = args.mnemonic_file {
+                    zair_sdk::commands::MnemonicSource::File(path)
+                } else {
+                    zair_sdk::commands::MnemonicSource::Prompt
+                };
+                zair_sdk::commands::key_derive_seed(
+                    args.output,
+                    mnemonic_source,
+                    args.no_passphrase,
+                )
+                .await
+            }
+            KeyCommands::DeriveUfvk { args } => {
+                let mnemonic_source = if args.mnemonic_stdin {
+                    Some(zair_sdk::commands::MnemonicSource::Stdin)
+                } else {
+                    args.mnemonic_file
+                        .map(zair_sdk::commands::MnemonicSource::File)
+                };
+                zair_sdk::commands::key_derive_ufvk(
+                    args.network,
+                    args.account,
+                    args.seed,
+                    mnemonic_source,
+                    args.no_passphrase,
+                    args.output,
                 )
                 .await
             }

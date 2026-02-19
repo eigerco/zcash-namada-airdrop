@@ -1,0 +1,30 @@
+[package]
+name = "zair-orchard-circuit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Orchard airdrop claim circuit for ZAIR"
+
+[dependencies]
+ff = { workspace = true }
+group = { workspace = true }
+halo2_gadgets = { workspace = true, features = ["unstable-sha256-gadget"] }
+halo2_proofs = { workspace = true }
+orchard = { workspace = true, features = ["circuit"] }
+pasta_curves = { workspace = true }
+zair-core = { workspace = true }
+
+[dev-dependencies]
+rand = "0.8"
+sha2 = { workspace = true }
+
+# Adapted halo2/orchard circuit code; default lints only.
+[lints]
+
+[lints.rust]
+dead_code = "allow"
+
+[lints.clippy]
+type_complexity = "allow"
+too_many_arguments = "allow"

@@ -27,9 +27,13 @@ git -C .patched-orchard apply "../nix/airdrop-orchard-nullifier.patch"
 
 git clone --branch v0.5.0 --single-branch https://github.com/zcash/sapling-crypto.git .patched-sapling-crypto
 git -C .patched-sapling-crypto apply "../nix/airdrop-sapling-nullifier.patch"
+
+curl -sL https://static.crates.io/crates/halo2_gadgets/halo2_gadgets-0.3.1.crate | tar xz
+mv halo2_gadgets-0.3.1 .patched-halo2-gadgets
+patch -p1 -d .patched-halo2-gadgets < nix/airdrop-halo2-gadgets-sha256.patch
 ```
 
-> **Note**: The patches add support for deriving "hiding nullifiers" - a privacy-preserving nullifier derivation that allows proving non-membership without revealing the actual nullifier.
+> **Note**: The patches expose private internals needed by the airdrop circuits - hiding nullifier derivation in sapling-crypto and orchard, circuit gadget visibility and note commitment helpers in orchard, and SHA-256 digest cell access in halo2_gadgets.
 
 ### With nix
 
@@ -45,17 +49,14 @@ The workspace also uses `pre-commit` checks. These can be removed if they prove 
 
 ### zair
 
-- **Description**: CLI tool for building Zcash airdrop snapshots and generating claim proofs. It supports the following commands:
-  - `build-config`: Fetches nullifiers from a lightwalletd server and saves them as snapshot files. Also exports a configuration JSON with Merkle tree roots.
-  - `claim-prepare`: Scans the chain for notes belonging to provided viewing keys, builds Merkle trees from snapshot nullifiers, and generates claim inputs for unspent notes.
-  - `prove`: Generates Groth16 ZK proofs from claim inputs (runs in parallel).
-  - `setup-local`: Generates the Groth16 proving and verifying keys (organizers only).
-  - `verify`: Verifies generated claim proofs against the verifying key.
+- **Description**: CLI tool for building Zcash airdrop snapshots, generating claim inputs/proofs, and verifying submissions.
+  - `zair key derive-seed` / `zair key derive-ufvk`: derive `seed.txt` or `ufvk.txt` from a wallet mnemonic.
+  - `zair config build`: build `config.json`, snapshot and gap-tree files.
+  - `zair claim prepare`: scan chain for your notes and write `claim-prepared.json` (UFVK is provided via a file).
+  - `zair claim prove` / `zair claim sign` / `zair claim run`: generate proofs and signed submissions.
+  - `zair verify proof` / `zair verify signature` / `zair verify run`: verify proofs and signatures.
+  - `zair setup sapling` / `zair setup orchard`: generate proving/verification parameters (organizers/developers).
   - Run with `--help` to check the usage.
-
-### mnemonic-to-fvks
-
-- **Description**: A utility to convert a Zcash mnemonic to Full Viewing Keys. Outputs the Unified Full Viewing Key in human-readable Bech32 format (e.g., `uview1...`), as well as the individual Orchard and Sapling keys in hex format. Run with `--help` to check the usage.
 
 ## Crates
 
@@ -72,13 +73,13 @@ Assuming that the project is set up correctly.
 
 ### Building the Project
 
-After completing the setup steps above, you can build the project. The project provides two binaries, `mnemonic-to-fvks` and `zair`. To build them use:
+After completing the setup steps above, you can build the project. The project provides the `zair` binary:
 
 ```bash
 cargo build --release
 ```
 
-This will produce the optimized `mnemonic-to-fvks` and `zair` executables in the `target/release` directory.
+This will produce the optimized `zair` executable in the `target/release` directory.
 
 ### User Guide
 

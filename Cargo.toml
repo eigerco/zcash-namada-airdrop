@@ -1,15 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/mnemonic-to-fvks",
   "crates/zair-nonmembership",
   "crates/zair-scan",
   "crates/zair-core",
   "crates/zair-sapling-circuit",
   "crates/zair-sapling-proofs",
+  "crates/zair-orchard-circuit",
+  "crates/zair-orchard-proofs",
   "crates/zair-sdk",
   "crates/zair-cli",
-  "crates/test-utils",
 ]
 
 [workspace.package]
@@ -19,13 +19,13 @@ repository = "https://github.com/eigerco/zcash-namada-airdrop"
 license = "MIT"
 
 [workspace.dependencies]
-mnemonic-to-fvks = { path = "crates/mnemonic-to-fvks" }
-test-utils = { path = "crates/test-utils" }
 zair-nonmembership = { path = "crates/zair-nonmembership" }
 zair-scan = { path = "crates/zair-scan" }
 zair-core = { path = "crates/zair-core" }
 zair-sapling-circuit = { path = "crates/zair-sapling-circuit" }
 zair-sapling-proofs = { path = "crates/zair-sapling-proofs" }
+zair-orchard-circuit = { path = "crates/zair-orchard-circuit" }
+zair-orchard-proofs = { path = "crates/zair-orchard-proofs" }
 zair-sdk = { path = "crates/zair-sdk" }
 zair-cli = { path = "crates/zair-cli" }
 
@@ -48,6 +48,8 @@ eyre = "0.6.12"
 ff = "0.13"
 futures = "0.3.31"
 group = "0.13"
+halo2_gadgets = "0.3"
+halo2_proofs = "0.3"
 jubjub = "0.10"
 ureq = "3.1.4"
 hex = "0.4"
@@ -56,6 +58,7 @@ http = "1.4.0"
 incrementalmerkletree = { version = "0.8.2" }
 itertools = "0.14.0"
 orchard = "0.11.0"
+pasta_curves = "0.5"
 prost = "0.14.1"
 rand = "0.9.2"
 rand_core = "0.6"
@@ -86,10 +89,12 @@ zcash_keys = "0.12.0"
 zcash_primitives = "0.26.3"
 zcash_protocol = "0.7.2"
 zcash_proofs = "0.26.1"
+zcash_spec = "0.2.1"
 zeroize = "1.8"
 zip32 = "0.2.1"
 
 [patch.crates-io]
+halo2_gadgets = { path = "./.patched-halo2-gadgets" }
 orchard = { path = "./.patched-orchard" }
 sapling-crypto = { path = "./.patched-sapling-crypto" }
 
@@ -118,6 +123,10 @@ style = { priority = -6, level = "deny" }
 suspicious = { priority = -7, level = "deny" }
 pedantic = { priority = -8, level = "deny" }
 nursery = { priority = -9, level = "deny" }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"

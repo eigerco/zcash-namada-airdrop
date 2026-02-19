@@ -1,5 +1,5 @@
 name: Setup Patched Dependencies
-description: Clone and patch orchard and sapling-crypto repositories
+description: Clone and patch orchard, sapling-crypto, and halo2_gadgets repositories
 
 runs:
   using: composite
@@ -23,3 +23,14 @@ runs:
       run: |
         git -C .patched-sapling-crypto apply \
           "../nix/airdrop-sapling-nullifier.patch"
+    - name: Download halo2_gadgets from crates.io
+      shell: bash
+      run: |
+        curl -sL https://static.crates.io/crates/halo2_gadgets/halo2_gadgets-0.3.1.crate \
+          | tar xz
+        mv halo2_gadgets-0.3.1 .patched-halo2-gadgets
+    - name: Patch halo2_gadgets
+      shell: bash
+      run: |
+        patch -p1 -d .patched-halo2-gadgets \
+          < nix/airdrop-halo2-gadgets-sha256.patch

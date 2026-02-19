@@ -3,7 +3,9 @@
 //! This module defines the `NoteMetadata` trait and pool-specific metadata types
 //! that enable generic proof generation for both Sapling and Orchard pools.
 
-use group::GroupEncoding as _;
+use group::{Group as _, GroupEncoding as _};
+use pasta_curves::arithmetic::CurveExt;
+use pasta_curves::pallas;
 use zair_core::base::Nullifier;
 use zair_core::schema::proof_inputs::{OrchardPrivateInputs, SaplingPrivateInputs};
 use zair_nonmembership::TreePosition;
@@ -107,13 +109,13 @@ impl NoteMetadata for SaplingNoteMetadata {
             rcm: self.rcm,
             ak,
             nk,
-            cm_note_position: self.note_position,
+            note_commitment_position: self.note_position,
             scope: self.scope.into(),
-            cm_merkle_proof,
-            left_nullifier: tree_position.left_bound,
-            right_nullifier: tree_position.right_bound,
-            nf_leaf_position: tree_position.leaf_position.into(),
-            nf_merkle_proof,
+            note_commitment_merkle_path: cm_merkle_proof,
+            nullifier_gap_left_bound: tree_position.left_bound,
+            nullifier_gap_right_bound: tree_position.right_bound,
+            nullifier_gap_position: tree_position.leaf_position.into(),
+            nullifier_gap_merkle_path: nf_merkle_proof,
         })
     }
 }
@@ -123,8 +125,20 @@ impl NoteMetadata for SaplingNoteMetadata {
 pub struct OrchardNoteMetadata {
     /// The hiding nullifier (public input)
     pub hiding_nullifier: Nullifier,
-    /// The note commitment
-    pub note_commitment: [u8; 32],
+    /// Note rho.
+    pub rho: [u8; 32],
+    /// Note rseed.
+    pub rseed: [u8; 32],
+    /// `g_d` (diversified basepoint).
+    pub g_d: [u8; 32],
+    /// `pk_d` (diversified transmission key).
+    pub pk_d: [u8; 32],
+    /// Note value in zatoshis.
+    pub value: u64,
+    /// The note position in the commitment tree.
+    pub note_position: u64,
+    /// The scope of the note (External for received payments, Internal for change).
+    pub scope: Scope,
     /// The block height where the note was created
     pub block_height: u64,
     /// Merkle proof for the note commitment
@@ -156,12 +170,32 @@ impl NoteMetadata for OrchardNoteMetadata {
             .collect();
 
         Ok(OrchardPrivateInputs {
-            note_commitment: self.note_commitment,
-            cm_merkle_proof,
-            left_nullifier: tree_position.left_bound,
-            right_nullifier: tree_position.right_bound,
-            nf_leaf_position: tree_position.leaf_position.into(),
-            nf_merkle_proof,
+            rho: self.rho,
+            rseed: self.rseed,
+            g_d: self.g_d,
+            pk_d: self.pk_d,
+            value: self.value,
+            note_commitment_position: self.note_position,
+            scope: self.scope.into(),
+            note_commitment_merkle_path: cm_merkle_proof,
+            nullifier_gap_left_bound: tree_position.left_bound,
+            nullifier_gap_right_bound: tree_position.right_bound,
+            nullifier_gap_position: tree_position.leaf_position.into(),
+            nullifier_gap_merkle_path: nf_merkle_proof,
         })
     }
+}
+
+/// Compute Orchard `g_d` from diversifier bytes, matching Orchard's `diversify_hash` behavior.
+///
+/// If `GroupHash("z.cash:Orchard-gd", d)` yields identity, fallback is
+/// `GroupHash("z.cash:Orchard-gd", [])`.
+#[must_use]
+pub fn orchard_g_d_from_diversifier(diversifier: &[u8; 11]) -> [u8; 32] {
+    let hasher = pallas::Point::hash_to_curve("z.cash:Orchard-gd");
+    let mut g_d = hasher(diversifier);
+    if bool::from(g_d.is_identity()) {
+        g_d = hasher(&[]);
+    }
+    g_d.to_bytes()
 }

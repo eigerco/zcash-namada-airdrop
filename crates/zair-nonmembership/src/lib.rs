@@ -1,7 +1,15 @@
 //! Non-membership Merkle tree utilities.
 
-mod non_membership_tree;
+mod core;
+mod gap_tree;
+mod node;
+mod pool;
+mod sparse;
 
-pub use non_membership_tree::{
-    MerklePathError, NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode, NonMembershipTree, TreePosition,
+pub use core::{MerklePathError, TreePosition};
+
+pub use gap_tree::{
+    OrchardGapTree, SaplingGapTree, map_orchard_user_positions, map_sapling_user_positions,
 };
+pub use node::{NON_MEMBERSHIP_TREE_DEPTH, NonMembershipNode};
+pub use sparse::{NonMembershipTree, OrchardNonMembershipTree};

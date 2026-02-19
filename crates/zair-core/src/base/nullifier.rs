@@ -55,18 +55,6 @@ impl Nullifier {
     pub const fn new(bytes: [u8; NULLIFIER_SIZE]) -> Self {
         Self(bytes)
     }
-
-    // /// Get the underlying byte array
-    // #[must_use]
-    // pub const fn as_bytes(&self) -> &[u8; NULLIFIER_SIZE] {
-    //     &self.0
-    // }
-    //
-    // /// Convert to the underlying byte array
-    // #[must_use]
-    // pub const fn to_bytes(self) -> [u8; NULLIFIER_SIZE] {
-    //     self.0
-    // }
 }
 
 impl From<&[u8; NULLIFIER_SIZE]> for Nullifier {
@@ -157,9 +145,23 @@ impl Deref for SanitiseNullifiers {
 
 #[cfg(test)]
 mod tests {
-    use test_utils::{nf, nfs};
-
     use super::*;
+
+    macro_rules! nf {
+        ($v:expr) => {{
+            let mut arr = [0_u8; 32];
+            arr[31] = $v;
+            arr.into()
+        }};
+    }
+
+    macro_rules! nfs {
+        ($($v:expr),* $(,)?) => {{
+            let mut v = vec![$( nf!($v) ),*];
+            v.sort();
+            v
+        }};
+    }
 
     #[test]
     fn test_sanitise_nullifiers() {

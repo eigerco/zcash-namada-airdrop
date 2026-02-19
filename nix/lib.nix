@@ -22,6 +22,13 @@
         patch -p1 -d $out < ${./airdrop-orchard-nullifier.patch}
       '';
 
+      # Patch halo2_gadgets
+      patchedHalo2Gadgets = pkgs.runCommand "halo2-gadgets-patched" { } ''
+        cp -r ${inputs.halo2}/halo2_gadgets $out
+        chmod -R +w $out
+        patch -p1 -d $out < ${./airdrop-halo2-gadgets-sha256.patch}
+      '';
+
       # Patch sapling
       patchedSapling = pkgs.runCommand "sapling-patched" { } ''
         cp -r ${inputs.sapling-crypto} $out
@@ -35,6 +42,7 @@
           rustToolchainStable
           rustToolchainNightly
           patchedOrchard
+          patchedHalo2Gadgets
           patchedSapling
           ;
       };

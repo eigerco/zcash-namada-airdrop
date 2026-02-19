@@ -68,6 +68,25 @@ pub struct ConfigBuildArgs {
         default_value = "snapshot-orchard.bin"
     )]
     pub snapshot_out_orchard: PathBuf,
+    /// Sapling gap-tree output file.
+    #[arg(
+        long,
+        env = "GAP_TREE_OUT_SAPLING",
+        visible_alias = "gaptree-out-sapling",
+        default_value = "gaptree-sapling.bin"
+    )]
+    pub gap_tree_out_sapling: PathBuf,
+    /// Orchard gap-tree output file.
+    #[arg(
+        long,
+        env = "GAP_TREE_OUT_ORCHARD",
+        visible_alias = "gaptree-out-orchard",
+        default_value = "gaptree-orchard.bin"
+    )]
+    pub gap_tree_out_orchard: PathBuf,
+    /// Skip writing gap-tree artifacts.
+    #[arg(long, env = "NO_GAP_TREE", default_value_t = false)]
+    pub no_gap_tree: bool,
 }
 
 /// Config command group.

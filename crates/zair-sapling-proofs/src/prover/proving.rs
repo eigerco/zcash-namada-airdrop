@@ -53,7 +53,7 @@ impl ClaimParameters {
 /// * `value` - The note value
 /// * `alpha` - Re-randomization scalar for the spend auth key
 /// * `rcv` - Value commitment trapdoor (randomness)
-/// * `anchor` - The merkle tree root
+/// * `note_commitment_root` - The note commitment tree root
 /// * `merkle_path` - The merkle path proving note inclusion (use `sapling::MerklePath`)
 ///
 /// # Errors
@@ -67,12 +67,12 @@ pub fn prepare_circuit(
     value: NoteValue,
     alpha: jubjub::Fr,
     rcv: &ValueCommitTrapdoor,
-    anchor: bls12_381::Scalar,
+    note_commitment_root: bls12_381::Scalar,
     merkle_path: &MerklePath,
     nm_left_nf: [u8; 32],
     nm_right_nf: [u8; 32],
     nm_merkle_path: Vec<([u8; 32], bool)>,
-    nm_anchor: bls12_381::Scalar,
+    nullifier_gap_root: bls12_381::Scalar,
     value_commitment_scheme: ValueCommitmentScheme,
     rcv_sha256: Option<[u8; 32]>,
 ) -> Result<Claim, ClaimProofError> {
@@ -122,11 +122,11 @@ pub fn prepare_circuit(
             .enumerate()
             .map(|(i, node)| Some(((*node).into(), (pos >> i) & 0x1 == 1)))
             .collect(),
-        anchor: Some(anchor),
+        anchor: Some(note_commitment_root),
         nm_left_nf: Some(nm_left_nf),
         nm_right_nf: Some(nm_right_nf),
         nm_merkle_path,
-        nm_anchor: Some(nm_anchor),
+        nm_anchor: Some(nullifier_gap_root),
         value_commitment_scheme: value_commitment_scheme.into(),
         rcv_sha256,
     })
