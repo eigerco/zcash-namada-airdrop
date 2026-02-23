@@ -5,9 +5,9 @@
     reason = "Test code intentionally indexes JSON fields directly"
 )]
 
-mod support;
+mod test_utils;
 
-use support::pipeline_harness::{
+use test_utils::pipeline_harness::{
     cached, ensure_claim_run, flip_hex_byte, load_json, message_path, proofs_path, submission_path,
     verify_proof_failure_stderr, verify_signature_failure_stderr, write_tampered,
 };

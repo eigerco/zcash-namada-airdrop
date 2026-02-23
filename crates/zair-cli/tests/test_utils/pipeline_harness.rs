@@ -13,14 +13,32 @@ use serde_json::Value;
 use zair_core::schema::config::{AirdropConfiguration, ValueCommitmentScheme};
 
 const CACHE: &str = "target/test-pipeline";
-const NETWORK: &str = "testnet";
-const HEIGHT: &str = "3839800";
-const BIRTHDAY: &str = "3809191";
-const LIGHTWALLETD: &str = "https://testnet.zec.rocks:443";
-const SEED_HEX: &str = "\
-    70ec9dc7927f9cf3422525bf803d631af6ee4595de207f578c42c44863263056\
-    f8e2f1334c904ea1f178badb6a25786250420f62a8c5377bca1cd65980029061";
 const MESSAGE: &[u8] = b"test-pipeline";
+
+fn test_env(name: &str) -> String {
+    std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set"))
+}
+
+fn test_network() -> String {
+    std::env::var("ZAIR_TEST_NETWORK").unwrap_or_else(|_| "testnet".to_owned())
+}
+
+fn test_height() -> String {
+    test_env("ZAIR_TEST_HEIGHT")
+}
+
+fn test_birthday() -> String {
+    test_env("ZAIR_TEST_BIRTHDAY")
+}
+
+fn test_lightwalletd() -> String {
+    std::env::var("ZAIR_TEST_LIGHTWALLETD")
+        .unwrap_or_else(|_| "https://testnet.zec.rocks:443".to_owned())
+}
+
+fn test_seed_hex() -> String {
+    test_env("ZAIR_TEST_SEED_HEX")
+}
 
 static PIPELINE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -72,7 +90,8 @@ pub fn submission_path(scheme: &str) -> PathBuf {
 fn ensure_seed_and_message() {
     let seed = cached("seed.txt");
     if !seed.exists() {
-        fs::write(&seed, format!("{SEED_HEX}\n")).expect("write seed.txt");
+        let seed_hex = test_seed_hex();
+        fs::write(&seed, format!("{seed_hex}\n")).expect("write seed.txt");
     }
 
     let msg = message_path();
@@ -92,16 +111,20 @@ fn ensure_config() {
         return;
     }
 
+    let network = test_network();
+    let height = test_height();
+    let lightwalletd = test_lightwalletd();
+
     zair()
         .args([
             "config",
             "build",
             "--network",
-            NETWORK,
+            &network,
             "--height",
-            HEIGHT,
+            &height,
             "--lightwalletd",
-            LIGHTWALLETD,
+            &lightwalletd,
             "--pool",
             "both",
             "--scheme-sapling",
@@ -223,6 +246,9 @@ pub fn ensure_claim_run(scheme: &str) {
         return;
     }
 
+    let birthday = test_birthday();
+    let lightwalletd = test_lightwalletd();
+
     zair()
         .args([
             "claim",
@@ -232,9 +258,9 @@ pub fn ensure_claim_run(scheme: &str) {
             "--seed",
             s(&seed),
             "--birthday",
-            BIRTHDAY,
+            &birthday,
             "--lightwalletd",
-            LIGHTWALLETD,
+            &lightwalletd,
             "--message",
             s(&message),
             "--snapshot-sapling",

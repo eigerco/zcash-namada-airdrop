@@ -2,6 +2,7 @@
 
 mod claim;
 mod config;
+pub mod constants;
 mod key;
 #[cfg(feature = "prove")]
 mod setup;
@@ -16,6 +17,9 @@ use zcash_protocol::consensus::Network;
 
 pub use self::claim::ClaimCommands;
 pub use self::config::ConfigCommands;
+use self::constants::{
+    DEFAULT_NETWORK, ZAIR_LIGHTWALLETD_URL, ZAIR_NETWORK, ZAIR_SNAPSHOT_HEIGHT,
+};
 pub use self::key::KeyCommands;
 #[cfg(feature = "prove")]
 pub use self::setup::SetupCommands;
@@ -71,13 +75,18 @@ pub enum Commands {
 #[derive(Debug, clap::Args)]
 pub struct BuildConfigArgs {
     /// Network to use (mainnet or testnet).
-    #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
+    #[arg(
+        long,
+        env = ZAIR_NETWORK,
+        default_value = DEFAULT_NETWORK,
+        value_parser = parse_network
+    )]
     pub network: Network,
     /// Snapshot block height (inclusive).
-    #[arg(long, env = "SNAPSHOT_HEIGHT")]
+    #[arg(long, env = ZAIR_SNAPSHOT_HEIGHT)]
     pub height: u64,
     /// Optional lightwalletd gRPC endpoint URL override.
-    #[arg(long, env = "LIGHTWALLETD_URL")]
+    #[arg(long, env = ZAIR_LIGHTWALLETD_URL)]
     pub lightwalletd: Option<String>,
 }
 

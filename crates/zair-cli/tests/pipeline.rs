@@ -1,8 +1,8 @@
 //! Full pipeline integration tests exercising the end-to-end CLI workflow.
 
-mod support;
+mod test_utils;
 
-use support::pipeline_harness::run_pipeline;
+use test_utils::pipeline_harness::run_pipeline;
 
 #[test]
 #[ignore = "Full pipeline: requires network access + heavy computation"]
