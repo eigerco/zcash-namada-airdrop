@@ -1097,11 +1097,12 @@ fn lt_nbits(
     n: u8,
 ) -> Result<halo2_proofs::circuit::AssignedCell<pallas::Base, pallas::Base>, plonk::Error> {
     debug_assert!(n <= 128);
-    let two_pow_v = Value::known(match n {
+    let two_pow_const = match n {
         128 => two_pow_128(),
         0..=127 => pallas::Base::from_u128(1u128 << n),
-        _ => pallas::Base::zero(),
-    });
+        _ => unreachable!("lt_nbits only supports n in 0..=128"),
+    };
+    let two_pow_v = Value::known(two_pow_const);
     let lt_v = a.value().zip(b.value()).map(|(a, b)| {
         let a_u = u128::from_le_bytes(a.to_repr()[0..16].try_into().unwrap());
         let b_u = u128::from_le_bytes(b.to_repr()[0..16].try_into().unwrap());
@@ -1129,7 +1130,8 @@ fn lt_nbits(
             let b0 = b.copy_advice(|| "b", &mut region, config.advices[1], 0)?;
             let lt = region.assign_advice(|| "lt", config.advices[2], 0, || lt_v)?;
             let diff = region.assign_advice(|| "diff", config.advices[3], 0, || diff_v)?;
-            region.assign_advice(|| "2^n", config.advices[4], 0, || two_pow_v)?;
+            let pow2 = region.assign_advice(|| "2^n", config.advices[4], 0, || two_pow_v)?;
+            region.constrain_constant(pow2.cell(), two_pow_const)?;
             config.q_lt.enable(&mut region, 0)?;
             let _ = (a0, b0);
             Ok((lt, diff))
