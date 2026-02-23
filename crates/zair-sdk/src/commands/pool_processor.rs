@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use zair_core::base::Nullifier;
+use zair_core::base::{Nullifier, Pool};
 use zair_core::schema::config::AirdropConfiguration;
 use zair_core::schema::proof_inputs::{ClaimInput, OrchardPrivateInputs, SaplingPrivateInputs};
 use zair_scan::ViewingKeys;
@@ -39,10 +39,8 @@ pub trait PoolProcessor {
     /// The pool-specific note metadata type.
     type Metadata: NoteMetadata<PoolPrivateInputs = Self::PrivateInputs>;
 
-    /// The pool name for logging.
-    const POOL_NAME: &'static str;
-    /// Whether this pool uses the Orchard Sinsemilla non-membership tree.
-    const USE_ORCHARD_NONMEMBERSHIP: bool;
+    /// The pool identifier.
+    const POOL: Pool;
 
     /// Returns the expected merkle root from the airdrop configuration.
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]>;
@@ -63,8 +61,7 @@ impl PoolProcessor for SaplingPool {
     type PrivateInputs = SaplingPrivateInputs;
     type Metadata = SaplingNoteMetadata;
 
-    const POOL_NAME: &'static str = "Sapling";
-    const USE_ORCHARD_NONMEMBERSHIP: bool = false;
+    const POOL: Pool = Pool::Sapling;
 
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
         config.sapling.as_ref().map(|pool| pool.nullifier_gap_root)
@@ -127,8 +124,7 @@ impl PoolProcessor for OrchardPool {
     type PrivateInputs = OrchardPrivateInputs;
     type Metadata = OrchardNoteMetadata;
 
-    const POOL_NAME: &'static str = "Orchard";
-    const USE_ORCHARD_NONMEMBERSHIP: bool = true;
+    const POOL: Pool = Pool::Orchard;
 
     fn expected_root(config: &AirdropConfiguration) -> Option<[u8; 32]> {
         config.orchard.as_ref().map(|pool| pool.nullifier_gap_root)

@@ -10,6 +10,10 @@ use crate::pool::sapling::sapling_gap_bounds;
 pub struct SaplingGapTree(DenseGapTree);
 
 impl SaplingGapTree {
+    pub fn from_nullifiers(nullifiers: &SanitiseNullifiers) -> Result<Self, MerklePathError> {
+        Self::from_nullifiers_with_progress(nullifiers, |_, _| {})
+    }
+
     pub fn from_nullifiers_with_progress(
         nullifiers: &SanitiseNullifiers,
         mut on_progress: impl FnMut(usize, usize),

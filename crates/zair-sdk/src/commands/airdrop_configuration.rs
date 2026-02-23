@@ -7,14 +7,14 @@ use http::Uri;
 use tokio::fs::File;
 use tokio::io::BufWriter;
 use tracing::{info, instrument, warn};
-use zair_core::base::SanitiseNullifiers;
+use zair_core::base::{Pool, SanitiseNullifiers};
 use zair_core::schema::config::{
     AirdropConfiguration, OrchardSnapshot, SaplingSnapshot, ValueCommitmentScheme,
 };
 use zair_nonmembership::{OrchardGapTree, SaplingGapTree};
 use zair_scan::light_walletd::LightWalletd;
 use zair_scan::scanner::ChainNullifiersVisitor;
-use zair_scan::{Pool, write_nullifiers};
+use zair_scan::write_nullifiers;
 use zcash_protocol::consensus::BlockHeight;
 
 use crate::common::{CommonConfig, PoolSelection, resolve_lightwalletd_url, to_airdrop_network};
@@ -50,12 +50,7 @@ pub async fn build_airdrop_configuration(
     orchard_target_id: String,
     orchard_value_commitment_scheme: ValueCommitmentScheme,
 ) -> eyre::Result<()> {
-    validate_target_ids(
-        pool,
-        &sapling_target_id,
-        &orchard_target_id,
-        orchard_value_commitment_scheme,
-    )?;
+    validate_target_ids(pool, &sapling_target_id, &orchard_target_id)?;
 
     let scan_range = resolve_snapshot_scan_range(config.network, pool, config.snapshot_height)?;
     let lightwalletd_url =
@@ -179,7 +174,6 @@ fn validate_target_ids(
     pool: PoolSelection,
     sapling_target_id: &str,
     orchard_target_id: &str,
-    _orchard_scheme: ValueCommitmentScheme,
 ) -> eyre::Result<()> {
     if pool.includes_sapling() {
         ensure!(
@@ -358,13 +352,8 @@ mod tests {
     #[test]
     fn orchard_allows_target_id_up_to_32_bytes() {
         let target = "a".repeat(32);
-        validate_target_ids(
-            PoolSelection::Orchard,
-            "ZAIRTEST",
-            &target,
-            ValueCommitmentScheme::Sha256,
-        )
-        .expect("Orchard target_id should be allowed up to 32 bytes");
+        validate_target_ids(PoolSelection::Orchard, "ZAIRTEST", &target)
+            .expect("Orchard target_id should be allowed up to 32 bytes");
     }
 
     #[tokio::test]
@@ -386,10 +375,9 @@ mod tests {
             .expect("enabled pool should produce a root");
 
         let expected_nullifiers = SanitiseNullifiers::new(vec![]);
-        let expected_root =
-            SaplingGapTree::from_nullifiers_with_progress(&expected_nullifiers, |_, _| {})
-                .expect("empty nullifiers should produce canonical tree")
-                .root_bytes();
+        let expected_root = SaplingGapTree::from_nullifiers(&expected_nullifiers)
+            .expect("empty nullifiers should produce canonical tree")
+            .root_bytes();
         assert_eq!(root, expected_root);
 
         let size = std::fs::metadata(&path)

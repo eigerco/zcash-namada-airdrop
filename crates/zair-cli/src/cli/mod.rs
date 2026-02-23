@@ -17,9 +17,7 @@ use zcash_protocol::consensus::Network;
 
 pub use self::claim::ClaimCommands;
 pub use self::config::ConfigCommands;
-use self::constants::{
-    DEFAULT_NETWORK, ZAIR_LIGHTWALLETD_URL, ZAIR_NETWORK, ZAIR_SNAPSHOT_HEIGHT,
-};
+use self::constants::{DEFAULT_NETWORK, ZAIR_LIGHTWALLETD_URL, ZAIR_NETWORK, ZAIR_SNAPSHOT_HEIGHT};
 pub use self::key::KeyCommands;
 #[cfg(feature = "prove")]
 pub use self::setup::SetupCommands;

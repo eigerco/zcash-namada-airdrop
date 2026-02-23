@@ -1,3 +1,5 @@
+use std::fmt;
+
 use zair_orchard_circuit::circuit::airdrop::ValueCommitmentScheme as CircuitValueCommitmentScheme;
 
 /// Orchard value-commitment scheme selection.
@@ -7,6 +9,15 @@ pub enum ValueCommitmentScheme {
     Native,
     /// Expose only `cv_sha256` (standard SHA-256 digest bytes).
     Sha256,
+}
+
+impl fmt::Display for ValueCommitmentScheme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Native => f.write_str("native"),
+            Self::Sha256 => f.write_str("sha256"),
+        }
+    }
 }
 
 impl From<zair_core::schema::config::ValueCommitmentScheme> for ValueCommitmentScheme {

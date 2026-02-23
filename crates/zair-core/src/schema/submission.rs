@@ -6,27 +6,6 @@ use serde_with::serde_as;
 
 use crate::base::Nullifier;
 
-/// Proof pool selector for signing/verification context.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum SubmissionPool {
-    /// Sapling claim proof/signature flow.
-    Sapling,
-    /// Orchard claim proof/signature flow.
-    Orchard,
-}
-
-impl SubmissionPool {
-    /// Encoded pool byte used in signature digest preimages.
-    #[must_use]
-    pub const fn as_byte(self) -> u8 {
-        match self {
-            Self::Sapling => 0,
-            Self::Orchard => 1,
-        }
-    }
-}
-
 /// A signed Sapling claim entry ready for target-chain submission.
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]

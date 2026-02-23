@@ -19,13 +19,6 @@ pub enum OrchardParamsMode {
     Auto,
 }
 
-const fn scheme_as_str(scheme: OrchardValueCommitmentScheme) -> &'static str {
-    match scheme {
-        OrchardValueCommitmentScheme::Native => "native",
-        OrchardValueCommitmentScheme::Sha256 => "sha256",
-    }
-}
-
 fn tmp_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()
@@ -144,7 +137,7 @@ pub async fn load_or_prepare_orchard_params(
                 eyre::bail!(
                     "Orchard params `k` mismatch for {}: expected {expected_k} (scheme={scheme:?}), got {actual_k}. Regenerate with `zair setup orchard --scheme {}` or use a different `--orchard-params` path.",
                     params_file.display(),
-                    scheme_as_str(scheme),
+                    scheme,
                 );
             }
             OrchardParamsMode::Auto => {
@@ -169,7 +162,7 @@ pub async fn load_or_prepare_orchard_params(
             eyre::bail!(
                 "Orchard params not found at {}. Run `zair setup orchard --scheme {}` (or use `--orchard-params-mode auto`) and retry.",
                 params_file.display(),
-                scheme_as_str(scheme),
+                scheme,
             );
         }
         OrchardParamsMode::Auto => {

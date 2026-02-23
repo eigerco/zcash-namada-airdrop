@@ -14,9 +14,10 @@ use super::sensitive_output::write_sensitive_output;
 use crate::seed::read_seed_file;
 
 /// Source of a BIP-39 mnemonic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub enum MnemonicSource {
     /// Prompt interactively (no echo).
+    #[default]
     Prompt,
     /// Read from file.
     File(PathBuf),

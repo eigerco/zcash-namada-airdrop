@@ -2,8 +2,8 @@
 
 use blake2b_simd::Params;
 use eyre::ensure;
-use zair_core::base::Nullifier;
-use zair_core::schema::submission::{OrchardSignedClaim, SaplingSignedClaim, SubmissionPool};
+use zair_core::base::{Nullifier, Pool};
+use zair_core::schema::submission::{OrchardSignedClaim, SaplingSignedClaim};
 
 use super::claim_proofs::{OrchardClaimProofResult, SaplingClaimProofResult};
 
@@ -11,6 +11,10 @@ use super::claim_proofs::{OrchardClaimProofResult, SaplingClaimProofResult};
 pub const SIGNATURE_PREIMAGE_TAG: &[u8; 8] = b"ZAIR_SIG";
 /// Protocol version byte included in signature digest preimages.
 pub const SIGNATURE_VERSION: u8 = 1;
+/// Domain tag for Sapling proof-hash preimages.
+pub const SAPLING_PROOF_TAG: &[u8; 21] = b"ZAIR_SAPLING_PROOF_V1";
+/// Domain tag for Orchard proof-hash preimages.
+pub const ORCHARD_PROOF_TAG: &[u8; 21] = b"ZAIR_ORCHARD_PROOF_V1";
 
 /// Hash arbitrary bytes to 32 bytes with `BLAKE2b`.
 #[must_use]
@@ -35,7 +39,7 @@ fn hash_sapling_proof_fields(
     airdrop_nullifier: Nullifier,
 ) -> [u8; 32] {
     let mut preimage = Vec::new();
-    preimage.extend_from_slice(b"ZAIR_SAPLING_PROOF_V1");
+    preimage.extend_from_slice(SAPLING_PROOF_TAG);
     preimage.extend_from_slice(zkproof);
     preimage.extend_from_slice(rk);
     match cv {
@@ -69,7 +73,7 @@ fn hash_orchard_proof_fields(
         "Orchard proof length exceeds u32::MAX"
     );
     let mut preimage = Vec::new();
-    preimage.extend_from_slice(b"ZAIR_ORCHARD_PROOF_V1");
+    preimage.extend_from_slice(ORCHARD_PROOF_TAG);
     preimage.extend_from_slice(&u32::try_from(zkproof.len())?.to_le_bytes());
     preimage.extend_from_slice(zkproof);
     preimage.extend_from_slice(rk);
@@ -144,7 +148,7 @@ pub fn hash_orchard_signed_claim_proof(claim: &OrchardSignedClaim) -> eyre::Resu
 /// `ZAIR_SIG_V1 || version:u8 || pool:u8 || target_id_len:u8 || target_id || proof_hash ||
 /// message_hash`
 pub fn signature_digest(
-    pool: SubmissionPool,
+    pool: Pool,
     target_id: &str,
     proof_hash: &[u8; 32],
     message_hash: &[u8; 32],

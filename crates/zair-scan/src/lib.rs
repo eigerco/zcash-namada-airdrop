@@ -6,22 +6,13 @@ pub mod scanner;
 pub mod user_nullifiers;
 pub mod viewing_keys;
 
-use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub use viewing_keys::{OrchardViewingKeys, SaplingViewingKeys, ViewingKeys};
+pub use zair_core::base::Pool;
 use zair_core::base::{NULLIFIER_SIZE, Nullifier, SanitiseNullifiers};
 
 /// 1 MiB buffer for file I/O.
 const FILE_BUF_SIZE: usize = 1024 * 1024;
-
-/// Zcash pools
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Pool {
-    /// Sapling pool
-    Sapling,
-    /// Orchard pool
-    Orchard,
-}
 
 /// Write nullifiers in binary format to an async writer
 ///

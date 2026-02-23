@@ -6,10 +6,9 @@ use std::path::PathBuf;
 use eyre::{Context as _, ContextCompat as _, ensure};
 use secrecy::ExposeSecret;
 use tracing::info;
+use zair_core::base::Pool;
 use zair_core::schema::config::AirdropConfiguration;
-use zair_core::schema::submission::{
-    ClaimSubmission, OrchardSignedClaim, SaplingSignedClaim, SubmissionPool,
-};
+use zair_core::schema::submission::{ClaimSubmission, OrchardSignedClaim, SaplingSignedClaim};
 
 use super::claim_proofs::{ClaimProofsOutput, ClaimSecretsOutput};
 use super::nullifier_uniqueness::ensure_unique_airdrop_nullifiers;
@@ -165,12 +164,7 @@ pub async fn sign_claim_submission(
                 )
             })?;
         let proof_hash = hash_sapling_proof(proof);
-        let digest = signature_digest(
-            SubmissionPool::Sapling,
-            target_id,
-            &proof_hash,
-            &message_hash,
-        )?;
+        let digest = signature_digest(Pool::Sapling, target_id, &proof_hash, &message_hash)?;
 
         let keys = sapling_keys
             .as_ref()
@@ -214,12 +208,7 @@ pub async fn sign_claim_submission(
                 )
             })?;
         let proof_hash = hash_orchard_proof(proof)?;
-        let digest = signature_digest(
-            SubmissionPool::Orchard,
-            target_id,
-            &proof_hash,
-            &message_hash,
-        )?;
+        let digest = signature_digest(Pool::Orchard, target_id, &proof_hash, &message_hash)?;
 
         let key = orchard_key
             .as_ref()

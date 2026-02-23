@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use eyre::{Context as _, ContextCompat as _, ensure};
 use tracing::{info, warn};
+use zair_core::base::Pool;
 use zair_core::schema::config::AirdropConfiguration;
-use zair_core::schema::submission::{ClaimSubmission, SubmissionPool};
+use zair_core::schema::submission::ClaimSubmission;
 
 use super::nullifier_uniqueness::ensure_unique_airdrop_nullifiers;
 use super::signature_digest::{
@@ -115,7 +116,7 @@ pub async fn verify_claim_submission_signature(
             .as_deref()
             .context("Sapling target_id must be present for Sapling signature verification")?;
         let digest = signature_digest(
-            SubmissionPool::Sapling,
+            Pool::Sapling,
             target_id,
             &entry.proof_hash,
             &entry.message_hash,
@@ -163,7 +164,7 @@ pub async fn verify_claim_submission_signature(
             .as_deref()
             .context("Orchard target_id must be present for Orchard signature verification")?;
         let digest = signature_digest(
-            SubmissionPool::Orchard,
+            Pool::Orchard,
             target_id,
             &entry.proof_hash,
             &entry.message_hash,
