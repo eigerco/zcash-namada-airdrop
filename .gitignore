@@ -28,3 +28,6 @@ result-*
 # Direnv
 .envrc
 .direnv/
+
+# mdBook
+docs/book/
