@@ -4,9 +4,6 @@
       config,
       pkgs,
       rustToolchainStable,
-      patchedOrchard,
-      patchedHalo2Gadgets,
-      patchedSapling,
       ...
     }:
     let
@@ -100,15 +97,6 @@
         shellHook = ''
           ${config.pre-commit.installationScript}
           ${pathExtensions.cargo}
-
-          # Create symlink to patched orchard for Cargo
-          ln -sfn ${patchedOrchard} ./.patched-orchard
-
-          # Create symlink to patched halo2_gadgets for Cargo
-          ln -sfn ${patchedHalo2Gadgets} ./.patched-halo2-gadgets
-
-          # Create symlink to patched sapling for Cargo
-          ln -sfn ${patchedSapling} ./.patched-sapling-crypto
 
           ${devInfo}
         '';

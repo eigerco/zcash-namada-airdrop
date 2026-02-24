@@ -1,5 +1,5 @@
 [files]
-extend-exclude = ["nix/*.patch"]
+extend-exclude = ["vendor/**/*"]
 
 [default]
 # Ignore words matching long alphanumeric patterns (hashes, addresses)

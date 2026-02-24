@@ -1,4 +1,4 @@
-{ inputs, lib, ... }:
+{ inputs, ... }:
 {
   imports = [ inputs.git-hooks-nix.flakeModule ];
 
@@ -6,21 +6,9 @@
     {
       pkgs,
       rustToolchainNightly,
-      patchedOrchard,
-      patchedHalo2Gadgets,
-      patchedSapling,
       ...
     }:
     let
-      # Create a source with patched dependencies for pre-commit checks
-      sourceWithPatchedDeps = pkgs.runCommand "source-with-patched-deps" { } ''
-        cp -r ${inputs.self} $out
-        chmod -R +w $out
-        ln -sfn ${patchedOrchard} $out/.patched-orchard
-        ln -sfn ${patchedHalo2Gadgets} $out/.patched-halo2-gadgets
-        ln -sfn ${patchedSapling} $out/.patched-sapling-crypto
-      '';
-
       # Prefetch cargo dependencies for sandbox builds
       cargoDeps = pkgs.rustPlatform.importCargoLock {
         lockFile = ../Cargo.lock;
@@ -41,8 +29,10 @@
       pre-commit = {
         check.enable = true;
         settings = {
-          # Use source with patched dependencies for nix flake check
-          rootSrc = lib.mkForce sourceWithPatchedDeps;
+          excludes = [
+            "vendor/.*"
+          ];
+
           settings.rust.check.cargoDeps = cargoDeps;
           hooks = {
             # markdown (config in .markdownlint.json)

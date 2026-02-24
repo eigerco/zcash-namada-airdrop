@@ -1,5 +1,4 @@
-{ inputs, ... }:
-{
+_: {
   perSystem =
     { pkgs, ... }:
     let
@@ -14,36 +13,12 @@
         };
       };
       rustToolchainNightly = pkgs.rust-bin.fromRustupToolchain rust-toolchain-nightly.toolchain;
-
-      # Patch orchard
-      patchedOrchard = pkgs.runCommand "orchard-patched" { } ''
-        cp -r ${inputs.orchard} $out
-        chmod -R +w $out
-        patch -p1 -d $out < ${./airdrop-orchard-nullifier.patch}
-      '';
-
-      # Patch halo2_gadgets
-      patchedHalo2Gadgets = pkgs.runCommand "halo2-gadgets-patched" { } ''
-        cp -r ${inputs.halo2}/halo2_gadgets $out
-        chmod -R +w $out
-        patch -p1 -d $out < ${./airdrop-halo2-gadgets-sha256.patch}
-      '';
-
-      # Patch sapling
-      patchedSapling = pkgs.runCommand "sapling-patched" { } ''
-        cp -r ${inputs.sapling-crypto} $out
-        chmod -R +w $out
-        patch -p1 -d $out < ${./airdrop-sapling-nullifier.patch}
-      '';
     in
     {
       _module.args = {
         inherit
           rustToolchainStable
           rustToolchainNightly
-          patchedOrchard
-          patchedHalo2Gadgets
-          patchedSapling
           ;
       };
     };
