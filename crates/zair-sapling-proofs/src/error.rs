@@ -12,6 +12,12 @@ pub enum ClaimProofError {
     /// Invalid ak value
     #[error("Invalid ak: not a valid point")]
     InvalidAk,
+    /// Invalid alpha value
+    #[error("Invalid alpha: not a valid scalar")]
+    InvalidAlpha,
+    /// Invalid rcv value
+    #[error("Invalid rcv: not a valid scalar")]
+    InvalidRcv,
     /// Invalid note commitment (cmu)
     #[error("Invalid note commitment: not a valid scalar")]
     InvalidCmu,

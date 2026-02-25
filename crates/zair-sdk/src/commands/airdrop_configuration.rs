@@ -7,11 +7,11 @@ use http::Uri;
 use tokio::fs::File;
 use tokio::io::BufWriter;
 use tracing::{info, instrument, warn};
-use zair_core::base::SanitiseNullifiers;
+use zair_core::base::{Pool, SanitiseNullifiers};
 use zair_core::schema::config::{
     AirdropConfiguration, OrchardSnapshot, SaplingSnapshot, ValueCommitmentScheme,
 };
-use zair_nonmembership::NonMembershipTree;
+use zair_nonmembership::{OrchardGapTree, SaplingGapTree};
 use zair_scan::light_walletd::LightWalletd;
 use zair_scan::scanner::ChainNullifiersVisitor;
 use zair_scan::write_nullifiers;
@@ -30,8 +30,9 @@ const FILE_BUF_SIZE: usize = 1024 * 1024;
 ///
 /// # Errors
 /// Returns an error if fetching nullifiers, validating inputs, or writing files fails.
-#[instrument(skip_all, fields(snapshot_height = config.snapshot_height, ?pool))]
+#[instrument(level = "debug", skip_all, fields(snapshot_height = config.snapshot_height, ?pool))]
 #[allow(
+    clippy::too_many_lines,
     clippy::too_many_arguments,
     reason = "CLI-facing command entrypoint mirrors explicit command arguments"
 )]
@@ -41,6 +42,9 @@ pub async fn build_airdrop_configuration(
     configuration_output_file: PathBuf,
     sapling_snapshot_nullifiers: PathBuf,
     orchard_snapshot_nullifiers: PathBuf,
+    sapling_gap_tree_file: PathBuf,
+    orchard_gap_tree_file: PathBuf,
+    no_gap_tree: bool,
     sapling_target_id: String,
     sapling_value_commitment_scheme: ValueCommitmentScheme,
     orchard_target_id: String,
@@ -57,22 +61,57 @@ pub async fn build_airdrop_configuration(
     let lightwalletd = LightWalletd::connect(lightwalletd_url).await?;
 
     let mut visitor = ChainNullifiersVisitor::default();
+    let mut last_fetch_pct = 0_usize;
+    info!(progress = "0%", "Fetching nullifiers");
     lightwalletd
-        .scan_nullifiers(&mut visitor, &scan_range)
+        .scan_nullifiers_with_progress(
+            &mut visitor,
+            &scan_range,
+            |height, scanned, total| {
+                if total == 0 {
+                    return;
+                }
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "Fetch progress percentage uses saturating operations and is guarded against total=0"
+                )]
+                let pct = scanned.saturating_mul(100).saturating_div(total);
+                if pct >= last_fetch_pct.saturating_add(10) {
+                    last_fetch_pct = pct;
+                    info!(
+                        progress = %format!("{pct}%"),
+                        current_height = height,
+                        scanned_blocks = scanned,
+                        total_blocks = total,
+                        "Fetching nullifiers"
+                    );
+                }
+            },
+        )
         .await?;
     let (sapling_nullifiers, orchard_nullifiers) = visitor.sanitise_nullifiers();
 
     let sapling_handle = tokio::spawn(process_pool(
         pool.includes_sapling(),
-        "sapling",
+        Pool::Sapling,
         sapling_nullifiers,
         sapling_snapshot_nullifiers,
+        if no_gap_tree {
+            None
+        } else {
+            Some(sapling_gap_tree_file)
+        },
     ));
     let orchard_handle = tokio::spawn(process_pool(
         pool.includes_orchard(),
-        "orchard",
+        Pool::Orchard,
         orchard_nullifiers,
         orchard_snapshot_nullifiers,
+        if no_gap_tree {
+            None
+        } else {
+            Some(orchard_gap_tree_file)
+        },
     ));
 
     let (sapling_nf_root, orchard_nf_root) = tokio::try_join!(sapling_handle, orchard_handle)?;
@@ -184,22 +223,20 @@ fn resolve_snapshot_scan_range(
     Ok(scan_start..=snapshot_height)
 }
 
-#[instrument(skip_all, fields(pool = %pool, store = %store.display()))]
+#[instrument(level = "debug", skip_all, fields(pool = ?pool, store = %store.display()))]
 async fn process_pool(
     enabled: bool,
-    pool: &str,
+    pool: Pool,
     nullifiers: SanitiseNullifiers,
     store: PathBuf,
+    gap_tree_store: Option<PathBuf>,
 ) -> eyre::Result<Option<[u8; 32]>> {
     if !enabled {
         return Ok(None);
     }
 
     if nullifiers.is_empty() {
-        warn!(
-            pool,
-            "No nullifiers collected; using canonical empty-gap root"
-        );
+        warn!("No nullifiers collected; using canonical empty-gap root");
     } else {
         info!(count = nullifiers.len(), "Collected nullifiers");
     }
@@ -207,13 +244,56 @@ async fn process_pool(
     let file = File::create(&store).await?;
     let mut writer = BufWriter::with_capacity(FILE_BUF_SIZE, file);
     write_nullifiers(&nullifiers, &mut writer).await?;
-    info!(file = ?store, pool, "Saved nullifiers");
+    info!(file = ?store, pool = ?pool, "Saved nullifiers");
 
-    let merkle_tree =
-        tokio::task::spawn_blocking(move || NonMembershipTree::from_nullifiers(&nullifiers))
+    let merkle_root = match pool {
+        Pool::Sapling => {
+            info!(pool = ?pool, progress = "0%", "Building non-membership tree");
+            let sapling_tree = tokio::task::spawn_blocking(move || {
+                SaplingGapTree::from_nullifiers_with_progress(&nullifiers, |current, total| {
+                    if total == 0 {
+                        return;
+                    }
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "Tree build progress percentage uses saturating operations and is guarded against total=0"
+                    )]
+                    let pct = current.saturating_mul(100).saturating_div(total);
+                    info!(pool = ?pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                })
+            })
             .await??;
-
-    let merkle_root = merkle_tree.root().to_bytes();
+            let root = sapling_tree.root_bytes();
+            if let Some(path) = gap_tree_store {
+                tokio::fs::write(&path, sapling_tree.to_bytes()).await?;
+                info!(pool = ?pool, file = %path.display(), "Saved gap-tree");
+            }
+            root
+        }
+        Pool::Orchard => {
+            info!(pool = ?pool, progress = "0%", "Building non-membership tree");
+            let orchard_tree = tokio::task::spawn_blocking(move || {
+                OrchardGapTree::from_nullifiers_with_progress(&nullifiers, |current, total| {
+                    if total == 0 {
+                        return;
+                    }
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "Tree build progress percentage uses saturating operations and is guarded against total=0"
+                    )]
+                    let pct = current.saturating_mul(100).saturating_div(total);
+                    info!(pool = ?pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                })
+            })
+            .await??;
+            let root = orchard_tree.root_bytes();
+            if let Some(path) = gap_tree_store {
+                tokio::fs::write(&path, orchard_tree.to_bytes()).await?;
+                info!(pool = ?pool, file = %path.display(), "Saved gap-tree");
+            }
+            root
+        }
+    };
 
     Ok(Some(merkle_root))
 }
@@ -269,6 +349,13 @@ mod tests {
         assert_eq!(json_config, expected_config);
     }
 
+    #[test]
+    fn orchard_allows_target_id_up_to_32_bytes() {
+        let target = "a".repeat(32);
+        validate_target_ids(PoolSelection::Orchard, "ZAIRTEST", &target)
+            .expect("Orchard target_id should be allowed up to 32 bytes");
+    }
+
     #[tokio::test]
     async fn process_pool_empty_nullifiers_uses_canonical_root() {
         let nullifiers = SanitiseNullifiers::new(vec![]);
@@ -282,16 +369,15 @@ mod tests {
             std::process::id()
         ));
 
-        let root = process_pool(true, "sapling", nullifiers, path.clone())
+        let root = process_pool(true, Pool::Sapling, nullifiers, path.clone(), None)
             .await
             .expect("processing should succeed")
             .expect("enabled pool should produce a root");
 
         let expected_nullifiers = SanitiseNullifiers::new(vec![]);
-        let expected_root = NonMembershipTree::from_nullifiers(&expected_nullifiers)
+        let expected_root = SaplingGapTree::from_nullifiers(&expected_nullifiers)
             .expect("empty nullifiers should produce canonical tree")
-            .root()
-            .to_bytes();
+            .root_bytes();
         assert_eq!(root, expected_root);
 
         let size = std::fs::metadata(&path)

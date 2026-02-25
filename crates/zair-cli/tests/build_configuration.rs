@@ -43,8 +43,10 @@ fn get_tree_state(url: &str, cookie: &str, height: u64) -> eyre::Result<Value> {
 #[test]
 #[ignore = "Requires network access to fetch chain data, and access to local rpc node. The tests assume that the cookie for rpc is available at $XDG_CACHE_HOME/zebra/.cookie"]
 fn test_build_airdrop_configuration() {
-    const LIGHTWALLETD_URL: &str = "https://testnet.zec.rocks:443";
-    const RPC_URL: &str = "http://127.0.0.1:18232";
+    let lightwalletd_url = std::env::var("ZAIR_TEST_LIGHTWALLETD")
+        .unwrap_or_else(|_| "https://testnet.zec.rocks:443".to_owned());
+    let rpc_url =
+        std::env::var("ZAIR_TEST_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:18232".to_owned());
 
     // Create temporary files paths
     let temp_dir = tempdir().expect("Failed to create temp dir");
@@ -63,7 +65,7 @@ fn test_build_airdrop_configuration() {
         "--network",
         "testnet",
         "--lightwalletd",
-        LIGHTWALLETD_URL,
+        &lightwalletd_url,
         "--height",
         format!("{snapshot_height}").as_str(),
         "--config-out",
@@ -93,7 +95,7 @@ fn test_build_airdrop_configuration() {
     // Fetch expected note commitment roots from the chain via RPC, to compare against
     // the generated configuration
     let cookie = read_cookie().expect("Failed to read cookie");
-    let result = get_tree_state(RPC_URL, &cookie, snapshot_height + 1)
+    let result = get_tree_state(&rpc_url, &cookie, snapshot_height + 1)
         .expect("Failed to get tree state from rpc");
 
     // Sanitice the rpc response and extract the expected anchors

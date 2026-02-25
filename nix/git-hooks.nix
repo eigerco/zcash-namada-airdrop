@@ -7,6 +7,7 @@
       pkgs,
       rustToolchainNightly,
       patchedOrchard,
+      patchedHalo2Gadgets,
       patchedSapling,
       ...
     }:
@@ -16,6 +17,7 @@
         cp -r ${inputs.self} $out
         chmod -R +w $out
         ln -sfn ${patchedOrchard} $out/.patched-orchard
+        ln -sfn ${patchedHalo2Gadgets} $out/.patched-halo2-gadgets
         ln -sfn ${patchedSapling} $out/.patched-sapling-crypto
       '';
 

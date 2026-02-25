@@ -2,6 +2,8 @@
 
 mod claim;
 mod config;
+pub mod constants;
+mod key;
 #[cfg(feature = "prove")]
 mod setup;
 mod verify;
@@ -9,13 +11,14 @@ mod verify;
 use clap::Parser;
 use eyre::{Result, ensure, eyre};
 use zair_core::schema::config::ValueCommitmentScheme;
-#[cfg(feature = "prove")]
-use zair_sdk::commands::SaplingSetupScheme;
+use zair_sdk::commands::{GapTreeMode, OrchardParamsMode};
 use zair_sdk::common::{CommonConfig, PoolSelection};
 use zcash_protocol::consensus::Network;
 
 pub use self::claim::ClaimCommands;
 pub use self::config::ConfigCommands;
+use self::constants::{DEFAULT_NETWORK, ZAIR_LIGHTWALLETD_URL, ZAIR_NETWORK, ZAIR_SNAPSHOT_HEIGHT};
+pub use self::key::KeyCommands;
 #[cfg(feature = "prove")]
 pub use self::setup::SetupCommands;
 pub use self::verify::VerifyCommands;
@@ -33,6 +36,12 @@ pub struct Cli {
 /// Top-level command groups.
 #[derive(Debug, clap::Subcommand)]
 pub enum Commands {
+    /// Key derivation utilities.
+    Key {
+        /// Key subcommands.
+        #[command(subcommand)]
+        command: KeyCommands,
+    },
     /// Setup utilities (organizer/developer focused).
     #[cfg(feature = "prove")]
     Setup {
@@ -64,13 +73,18 @@ pub enum Commands {
 #[derive(Debug, clap::Args)]
 pub struct BuildConfigArgs {
     /// Network to use (mainnet or testnet).
-    #[arg(long, env = "NETWORK", default_value = "mainnet", value_parser = parse_network)]
+    #[arg(
+        long,
+        env = ZAIR_NETWORK,
+        default_value = DEFAULT_NETWORK,
+        value_parser = parse_network
+    )]
     pub network: Network,
     /// Snapshot block height (inclusive).
-    #[arg(long, env = "SNAPSHOT_HEIGHT")]
+    #[arg(long, env = ZAIR_SNAPSHOT_HEIGHT)]
     pub height: u64,
     /// Optional lightwalletd gRPC endpoint URL override.
-    #[arg(long, env = "LIGHTWALLETD_URL")]
+    #[arg(long, env = ZAIR_LIGHTWALLETD_URL)]
     pub lightwalletd: Option<String>,
 }
 
@@ -125,13 +139,23 @@ pub fn parse_value_commitment_scheme(s: &str) -> Result<ValueCommitmentScheme> {
     }
 }
 
-#[cfg(feature = "prove")]
-pub fn parse_setup_scheme(s: &str) -> Result<SaplingSetupScheme> {
+pub fn parse_gap_tree_mode(s: &str) -> Result<GapTreeMode> {
     match s {
-        "native" => Ok(SaplingSetupScheme::Native),
-        "sha256" => Ok(SaplingSetupScheme::Sha256),
+        "none" => Ok(GapTreeMode::None),
+        "rebuild" => Ok(GapTreeMode::Rebuild),
+        "sparse" => Ok(GapTreeMode::Sparse),
         other => Err(eyre!(
-            "Invalid setup scheme: {other}. Expected 'native' or 'sha256'."
+            "Invalid gap-tree mode: {other}. Expected 'none', 'rebuild', or 'sparse'."
+        )),
+    }
+}
+
+pub fn parse_orchard_params_mode(s: &str) -> Result<OrchardParamsMode> {
+    match s {
+        "require" => Ok(OrchardParamsMode::Require),
+        "auto" => Ok(OrchardParamsMode::Auto),
+        other => Err(eyre!(
+            "Invalid orchard params mode: {other}. Expected 'require' or 'auto'."
         )),
     }
 }
@@ -168,9 +192,39 @@ mod tests {
         assert!(parse_pool_selection("nope").is_err());
     }
 
+    #[test]
+    fn gap_tree_mode_parse() {
+        assert!(matches!(
+            parse_gap_tree_mode("none").expect("none should parse"),
+            GapTreeMode::None
+        ));
+        assert!(matches!(
+            parse_gap_tree_mode("rebuild").expect("rebuild should parse"),
+            GapTreeMode::Rebuild
+        ));
+        assert!(matches!(
+            parse_gap_tree_mode("sparse").expect("sparse should parse"),
+            GapTreeMode::Sparse
+        ));
+        assert!(parse_gap_tree_mode("invalid").is_err());
+    }
+
+    #[test]
+    fn orchard_params_mode_parse() {
+        assert!(matches!(
+            parse_orchard_params_mode("require").expect("require should parse"),
+            OrchardParamsMode::Require
+        ));
+        assert!(matches!(
+            parse_orchard_params_mode("auto").expect("auto should parse"),
+            OrchardParamsMode::Auto
+        ));
+        assert!(parse_orchard_params_mode("invalid").is_err());
+    }
+
     #[cfg(feature = "prove")]
     #[test]
-    fn parse_claim_run_command() {
+    fn parse_claim_run_command_requires_message_input() {
         let cli = Cli::try_parse_from([
             "zair",
             "claim",
@@ -180,12 +234,29 @@ mod tests {
             "--birthday",
             "3663119",
         ]);
+        assert!(cli.is_err());
+
+        let cli = Cli::try_parse_from([
+            "zair",
+            "claim",
+            "run",
+            "--seed",
+            "seed.txt",
+            "--birthday",
+            "3663119",
+            "--message",
+            "claim-message.bin",
+        ]);
         assert!(cli.is_ok());
     }
 
     #[test]
-    fn parse_verify_run_command() {
+    fn parse_verify_run_command_requires_message_input() {
         let cli = Cli::try_parse_from(["zair", "verify", "run"]);
+        assert!(cli.is_err());
+
+        let cli =
+            Cli::try_parse_from(["zair", "verify", "run", "--messages", "claim-messages.json"]);
         assert!(cli.is_ok());
     }
 }

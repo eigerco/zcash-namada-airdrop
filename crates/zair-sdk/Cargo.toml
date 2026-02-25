@@ -9,7 +9,7 @@ description = "SDK/library workflow logic for ZAIR"
 [features]
 default = ["prove"]
 # Enables Sapling proving/keygen helpers (verification stays available without this).
-prove = ["zair-sapling-proofs/prove"]
+prove = ["zair-sapling-proofs/prove", "zair-orchard-proofs/prove"]
 
 [dependencies]
 eyre = { workspace = true }
@@ -30,23 +30,32 @@ tokio = { workspace = true, features = [
 tracing = { workspace = true }
 zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
 zcash_protocol = { workspace = true }
+zcash_spec = { workspace = true }
 zip32 = { workspace = true }
 
 zair-core = { workspace = true }
 zair-nonmembership = { workspace = true }
+zair-orchard-proofs = { workspace = true }
 zair-sapling-proofs = { workspace = true }
 zair-scan = { workspace = true }
 
 bellman = { workspace = true }
+bip39 = { workspace = true }
 blake2b_simd = { workspace = true }
 bls12_381 = { workspace = true }
 group = { workspace = true }
+halo2_proofs = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
 jubjub = { workspace = true }
+pasta_curves = { workspace = true }
 rand_core = { workspace = true }
+rpassword = { workspace = true }
 secrecy = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

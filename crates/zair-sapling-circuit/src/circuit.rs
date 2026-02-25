@@ -25,6 +25,9 @@ use crate::gadgets::enforce_less_than;
 /// This is used to derive a nullifier that doesn't reveal the Zcash nullifier.
 pub const HIDING_NF_PERSONALIZATION: &[u8; 8] = b"ZAIRTEST";
 
+/// Prefix for SHA-256 value commitments (`cv_sha256`).
+pub const VALUE_COMMIT_SHA256_PREFIX: &[u8; 4] = &zair_core::base::VALUE_COMMIT_SHA256_PREFIX;
+
 /// The opening (value and randomness) of a Sapling value commitment.
 #[derive(Clone)]
 pub struct ValueCommitmentOpening {
@@ -285,8 +288,8 @@ fn value_commitment_sha256_bits_le<CS>(
 where
     CS: ConstraintSystem<bls12_381::Scalar>,
 {
-    // Preimage = PERSONALIZATION(8 bytes) || LE64(value) || rcv_sha256(32 bytes).
-    let prefix_bits_be = bytes_to_bits_be_const(HIDING_NF_PERSONALIZATION);
+    // Preimage = PREFIX(4 bytes) || LE64(value) || rcv_sha256(32 bytes).
+    let prefix_bits_be = bytes_to_bits_be_const(VALUE_COMMIT_SHA256_PREFIX);
 
     // Value bits are little-endian per-byte; SHA gadget expects big-endian per-byte.
     let mut value_bits_for_sha = Vec::with_capacity(64);
@@ -298,7 +301,7 @@ where
         witness_bytes_as_bits(cs.namespace(|| "rcv_sha256 bits"), rcv_sha256.as_ref())?;
     let rcv_sha256_bits_for_sha = reverse_bits_within_each_byte(&rcv_sha256_bits_input);
 
-    let mut preimage_bits_be = Vec::with_capacity(384);
+    let mut preimage_bits_be = Vec::with_capacity(352);
     preimage_bits_be.extend(prefix_bits_be);
     preimage_bits_be.extend(value_bits_for_sha);
     preimage_bits_be.extend(rcv_sha256_bits_for_sha);

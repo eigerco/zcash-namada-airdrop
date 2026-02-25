@@ -13,10 +13,13 @@ use http::Uri;
 use tokio::fs::File;
 use tokio::io::BufReader;
 use tracing::{debug, info, instrument, warn};
-use zair_core::base::{Nullifier, SanitiseNullifiers};
+use zair_core::base::{Nullifier, Pool, SanitiseNullifiers};
 use zair_core::schema::config::AirdropConfiguration;
 use zair_core::schema::proof_inputs::{AirdropClaimInputs, ClaimInput, PublicInputs};
-use zair_nonmembership::{MerklePathError, NonMembershipNode, NonMembershipTree, TreePosition};
+use zair_nonmembership::{
+    MerklePathError, NonMembershipTree, OrchardGapTree, OrchardNonMembershipTree, SaplingGapTree,
+    TreePosition, map_orchard_user_positions, map_sapling_user_positions,
+};
 use zair_scan::ViewingKeys;
 use zair_scan::light_walletd::LightWalletd;
 use zair_scan::scanner::{AccountNotesVisitor, BlockScanner};
@@ -25,6 +28,7 @@ use zcash_protocol::consensus::Network;
 
 use super::note_metadata::NoteMetadata;
 use super::pool_processor::{OrchardPool, PoolClaimResult, PoolProcessor, SaplingPool};
+use super::sensitive_output::write_sensitive_output;
 use crate::common::{resolve_lightwalletd_url, to_zcash_network};
 /// 1 MiB buffer for file I/O.
 const FILE_BUF_SIZE: usize = 1024 * 1024;
@@ -32,23 +36,60 @@ const FILE_BUF_SIZE: usize = 1024 * 1024;
 const DEFAULT_SAPLING_SNAPSHOT_FILE: &str = "snapshot-sapling.bin";
 /// Default Orchard snapshot path used by claim flows.
 const DEFAULT_ORCHARD_SNAPSHOT_FILE: &str = "snapshot-orchard.bin";
+/// Default Sapling gap-tree path used by claim flows.
+const DEFAULT_SAPLING_GAP_TREE_FILE: &str = "gaptree-sapling.bin";
+/// Default Orchard gap-tree path used by claim flows.
+const DEFAULT_ORCHARD_GAP_TREE_FILE: &str = "gaptree-orchard.bin";
+
+/// Gap-tree handling mode for claim prepare/run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GapTreeMode {
+    /// Require precomputed `gaptree-*.bin` files and fail if missing/invalid.
+    None,
+    /// Rebuild gap trees from snapshots and persist to `gaptree-*.bin`.
+    Rebuild,
+    /// Build sparse in-memory trees directly from snapshots; do not read/write gap-tree files.
+    Sparse,
+}
 
 fn resolve_snapshot_path_if_enabled(
     enabled: bool,
     provided_path: Option<PathBuf>,
     default_path: &str,
-    pool_name: &str,
+    pool: Pool,
 ) -> Option<PathBuf> {
     if !enabled {
-        return provided_path;
+        return None;
     }
 
     provided_path.or_else(|| {
         let path = PathBuf::from(default_path);
         info!(
             file = ?path,
-            pool = pool_name,
+            %pool,
             "No snapshot path provided; using default"
+        );
+        Some(path)
+    })
+}
+
+fn resolve_gap_tree_path_if_enabled(
+    enabled: bool,
+    provided_path: Option<PathBuf>,
+    default_path: &str,
+    pool: Pool,
+    gap_tree_mode: GapTreeMode,
+) -> Option<PathBuf> {
+    if !enabled || gap_tree_mode == GapTreeMode::Sparse {
+        return None;
+    }
+
+    provided_path.or_else(|| {
+        let path = PathBuf::from(default_path);
+        info!(
+            file = ?path,
+            %pool,
+            "No gap-tree path provided; using default"
         );
         Some(path)
     })
@@ -66,13 +107,18 @@ fn resolve_snapshot_path_if_enabled(
 /// Returns error if any step in the process fails,
 /// including scanning for notes, loading nullifiers, building Merkle trees,
 /// or generating proofs.
-#[instrument(skip_all, fields(
-    lightwalletd_url = ?lightwalletd_url,
-))]
+#[instrument(level = "debug", skip_all)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "CLI command entrypoint carries explicit file/path knobs"
+)]
 pub async fn airdrop_claim(
     lightwalletd_url: Option<String>,
     sapling_snapshot_nullifiers: Option<PathBuf>,
     orchard_snapshot_nullifiers: Option<PathBuf>,
+    sapling_gap_tree_file: Option<PathBuf>,
+    orchard_gap_tree_file: Option<PathBuf>,
+    gap_tree_mode: GapTreeMode,
     unified_full_viewing_key: String,
     birthday_height: u64,
     airdrop_claims_output_file: PathBuf,
@@ -84,18 +130,35 @@ pub async fn airdrop_claim(
         airdrop_config.sapling.is_some(),
         sapling_snapshot_nullifiers,
         DEFAULT_SAPLING_SNAPSHOT_FILE,
-        "sapling",
+        Pool::Sapling,
     );
     let orchard_snapshot_nullifiers = resolve_snapshot_path_if_enabled(
         airdrop_config.orchard.is_some(),
         orchard_snapshot_nullifiers,
         DEFAULT_ORCHARD_SNAPSHOT_FILE,
-        "orchard",
+        Pool::Orchard,
+    );
+    let sapling_gap_tree_file = resolve_gap_tree_path_if_enabled(
+        airdrop_config.sapling.is_some(),
+        sapling_gap_tree_file,
+        DEFAULT_SAPLING_GAP_TREE_FILE,
+        Pool::Sapling,
+        gap_tree_mode,
+    );
+    let orchard_gap_tree_file = resolve_gap_tree_path_if_enabled(
+        airdrop_config.orchard.is_some(),
+        orchard_gap_tree_file,
+        DEFAULT_ORCHARD_GAP_TREE_FILE,
+        Pool::Orchard,
+        gap_tree_mode,
     );
     validate_pool_inputs(
         &airdrop_config,
         sapling_snapshot_nullifiers.as_ref(),
         orchard_snapshot_nullifiers.as_ref(),
+        sapling_gap_tree_file.as_ref(),
+        orchard_gap_tree_file.as_ref(),
+        gap_tree_mode,
     )?;
 
     let network = to_zcash_network(airdrop_config.network);
@@ -123,6 +186,8 @@ pub async fn airdrop_claim(
             &viewing_keys,
             &airdrop_config,
             sapling_snapshot_nullifiers,
+            sapling_gap_tree_file,
+            gap_tree_mode,
         ),
         process_pool_claims::<OrchardPool>(
             airdrop_config.orchard.is_some(),
@@ -130,6 +195,8 @@ pub async fn airdrop_claim(
             &viewing_keys,
             &airdrop_config,
             orchard_snapshot_nullifiers,
+            orchard_gap_tree_file,
+            gap_tree_mode,
         ),
     )?;
 
@@ -144,7 +211,7 @@ pub async fn airdrop_claim(
     };
 
     let json = serde_json::to_string_pretty(&user_proofs)?;
-    tokio::fs::write(&airdrop_claims_output_file, json).await?;
+    write_sensitive_output(&airdrop_claims_output_file, &json).await?;
 
     info!(
         file = ?airdrop_claims_output_file,
@@ -159,6 +226,9 @@ fn validate_pool_inputs(
     airdrop_config: &AirdropConfiguration,
     sapling_snapshot_nullifiers: Option<&PathBuf>,
     orchard_snapshot_nullifiers: Option<&PathBuf>,
+    sapling_gap_tree_file: Option<&PathBuf>,
+    orchard_gap_tree_file: Option<&PathBuf>,
+    gap_tree_mode: GapTreeMode,
 ) -> eyre::Result<()> {
     let config_has_sapling = airdrop_config.sapling.is_some();
     let config_has_orchard = airdrop_config.orchard.is_some();
@@ -173,24 +243,25 @@ fn validate_pool_inputs(
         "Airdrop configuration enables Sapling, but --snapshot-sapling is missing"
     );
     ensure!(
-        config_has_sapling || sapling_snapshot_nullifiers.is_none(),
-        "Sapling snapshot file was provided, but configuration has no sapling pool"
-    );
-
-    ensure!(
         !(config_has_orchard && orchard_snapshot_nullifiers.is_none()),
         "Airdrop configuration enables Orchard, but --snapshot-orchard is missing"
     );
-    ensure!(
-        config_has_orchard || orchard_snapshot_nullifiers.is_none(),
-        "Orchard snapshot file was provided, but configuration has no orchard pool"
-    );
+    if gap_tree_mode == GapTreeMode::None {
+        ensure!(
+            !(config_has_sapling && sapling_gap_tree_file.is_none()),
+            "Airdrop configuration enables Sapling, but --gap-tree-sapling is missing (or default gaptree-sapling.bin is unavailable)"
+        );
+        ensure!(
+            !(config_has_orchard && orchard_gap_tree_file.is_none()),
+            "Airdrop configuration enables Orchard, but --gap-tree-orchard is missing (or default gaptree-orchard.bin is unavailable)"
+        );
+    }
 
     Ok(())
 }
 
 /// Scan the blockchain for user notes within the snapshot range.
-#[instrument(skip_all)]
+#[instrument(level = "debug", skip_all)]
 async fn find_user_notes(
     lightwalletd_url: &str,
     network: Network,
@@ -239,31 +310,233 @@ async fn find_user_notes(
 /// Loaded pool data including the non-membership merkle-tree and user's nullifier positions.
 pub struct LoadedPoolData {
     /// The non-membership merkle tree for the pool.
-    pub tree: NonMembershipTree,
+    pub tree: PoolMerkleTree,
     /// The user's nullifiers with tree positions needed to generate proofs.
     pub user_nullifiers: Vec<TreePosition>,
 }
 
+/// Pool-specific non-membership tree variants.
+pub enum PoolMerkleTree {
+    Sapling(SaplingGapTree),
+    Orchard(OrchardGapTree),
+    SaplingSparse(NonMembershipTree),
+    OrchardSparse(OrchardNonMembershipTree),
+}
+
+impl PoolMerkleTree {
+    fn root_bytes(&self) -> [u8; 32] {
+        match self {
+            Self::Sapling(tree) => tree.root_bytes(),
+            Self::Orchard(tree) => tree.root_bytes(),
+            Self::SaplingSparse(tree) => tree.root().to_bytes(),
+            Self::OrchardSparse(tree) => tree.root_bytes(),
+        }
+    }
+
+    fn witness_bytes(&self, position: u64) -> Result<Vec<[u8; 32]>, MerklePathError> {
+        match self {
+            Self::Sapling(tree) => tree.witness_bytes(position),
+            Self::Orchard(tree) => tree.witness_bytes(position),
+            Self::SaplingSparse(tree) => tree
+                .witness(position.into())
+                .map(|path| path.into_iter().map(|node| node.to_bytes()).collect()),
+            Self::OrchardSparse(tree) => tree.witness_bytes(position.into()),
+        }
+    }
+}
+
 /// Build the non-membership merkle tree for a pool.
+#[allow(
+    clippy::too_many_lines,
+    reason = "Mode-specific sparse/dense cache handling is intentionally kept in one dispatch function"
+)]
 async fn build_pool_merkle_tree(
     snapshot_nullifiers_path: &Path,
+    gap_tree_path: Option<&Path>,
     user_nullifiers: SanitiseNullifiers,
+    pool: Pool,
+    gap_tree_mode: GapTreeMode,
 ) -> eyre::Result<LoadedPoolData> {
+    let use_orchard_tree = pool == Pool::Orchard;
     let chain_nullifiers = load_nullifiers_from_file(snapshot_nullifiers_path).await?;
 
-    info!(count = chain_nullifiers.len(), "Loaded chain nullifiers");
+    info!(
+        count = chain_nullifiers.len(),
+        %pool,
+        "Loaded chain nullifiers"
+    );
 
-    let loaded_data = tokio::task::spawn_blocking(move || {
-        let (tree, user_nullifiers) =
-            NonMembershipTree::from_chain_and_user_nullifiers(&chain_nullifiers, &user_nullifiers)?;
-        Ok::<_, MerklePathError>(LoadedPoolData {
-            tree,
-            user_nullifiers,
-        })
-    })
-    .await??;
+    match gap_tree_mode {
+        GapTreeMode::Sparse => {
+            info!(
+                %pool,
+                "Building sparse non-membership tree from snapshot nullifiers..."
+            );
+            info!(
+                %pool,
+                progress = "0%",
+                "Building non-membership tree"
+            );
+            let chain_for_build = chain_nullifiers;
+            let user_for_build = user_nullifiers;
+            let (tree, user_positions) = tokio::task::spawn_blocking(move || {
+                let mut last_progress_pct = 0_usize;
+                if use_orchard_tree {
+                    OrchardNonMembershipTree::from_chain_and_user_nullifiers_with_progress(
+                        &chain_for_build,
+                        &user_for_build,
+                        |current, total| {
+                            if total == 0 {
+                                return;
+                            }
+                            #[allow(
+                                clippy::arithmetic_side_effects,
+                                reason = "Progress percentage uses saturating operations and is guarded against total=0"
+                            )]
+                            let pct = current.saturating_mul(100).saturating_div(total);
+                            if pct >= last_progress_pct.saturating_add(10) {
+                                last_progress_pct = pct;
+                                info!(%pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                            }
+                        },
+                    )
+                    .map(|(tree, positions)| (PoolMerkleTree::OrchardSparse(tree), positions))
+                } else {
+                    NonMembershipTree::from_chain_and_user_nullifiers_with_progress(
+                        &chain_for_build,
+                        &user_for_build,
+                        |current, total| {
+                            if total == 0 {
+                                return;
+                            }
+                            #[allow(
+                                clippy::arithmetic_side_effects,
+                                reason = "Progress percentage uses saturating operations and is guarded against total=0"
+                            )]
+                            let pct = current.saturating_mul(100).saturating_div(total);
+                            if pct >= last_progress_pct.saturating_add(10) {
+                                last_progress_pct = pct;
+                                info!(%pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                            }
+                        },
+                    )
+                    .map(|(tree, positions)| (PoolMerkleTree::SaplingSparse(tree), positions))
+                }
+            })
+            .await??;
 
-    Ok(loaded_data)
+            info!(%pool, "Non-membership tree ready");
+            Ok(LoadedPoolData {
+                tree,
+                user_nullifiers: user_positions,
+            })
+        }
+        GapTreeMode::Rebuild | GapTreeMode::None => {
+            let user_positions = if use_orchard_tree {
+                map_orchard_user_positions(&chain_nullifiers, &user_nullifiers)
+                    .map_err(|e| eyre::eyre!("Failed to map Orchard user nullifiers: {e}"))?
+            } else {
+                map_sapling_user_positions(&chain_nullifiers, &user_nullifiers)
+                    .map_err(|e| eyre::eyre!("Failed to map Sapling user nullifiers: {e}"))?
+            };
+            let gap_tree_path = gap_tree_path.ok_or_else(|| {
+                eyre::eyre!(
+                    "Missing gap-tree path for pool {pool} in mode {:?}",
+                    gap_tree_mode
+                )
+            })?;
+
+            let tree = if gap_tree_mode == GapTreeMode::Rebuild {
+                info!(
+                    %pool,
+                    "Rebuilding gap-tree from snapshot nullifiers..."
+                );
+                let chain_nullifiers_for_build = chain_nullifiers;
+                let built_tree = tokio::task::spawn_blocking(move || {
+                    if use_orchard_tree {
+                        OrchardGapTree::from_nullifiers_with_progress(
+                            &chain_nullifiers_for_build,
+                            |current, total| {
+                                if total == 0 {
+                                    return;
+                                }
+                                #[allow(
+                                    clippy::arithmetic_side_effects,
+                                    reason = "Progress percentage uses saturating operations and is guarded against total=0"
+                                )]
+                                let pct = current.saturating_mul(100).saturating_div(total);
+                                info!(%pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                            },
+                        )
+                        .map(PoolMerkleTree::Orchard)
+                    } else {
+                        SaplingGapTree::from_nullifiers_with_progress(
+                            &chain_nullifiers_for_build,
+                            |current, total| {
+                                if total == 0 {
+                                    return;
+                                }
+                                #[allow(
+                                    clippy::arithmetic_side_effects,
+                                    reason = "Progress percentage uses saturating operations and is guarded against total=0"
+                                )]
+                                let pct = current.saturating_mul(100).saturating_div(total);
+                                info!(%pool, progress = %format!("{pct}%"), "Building non-membership tree");
+                            },
+                        )
+                        .map(PoolMerkleTree::Sapling)
+                    }
+                })
+                .await??;
+                let serialized = match &built_tree {
+                    PoolMerkleTree::Sapling(tree) => tree.to_bytes(),
+                    PoolMerkleTree::Orchard(tree) => tree.to_bytes(),
+                    PoolMerkleTree::SaplingSparse(_) | PoolMerkleTree::OrchardSparse(_) => {
+                        unreachable!("sparse variants are not persisted in rebuild mode")
+                    }
+                };
+                tokio::fs::write(gap_tree_path, serialized)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to write gap-tree to {}", gap_tree_path.display())
+                    })?;
+                built_tree
+            } else {
+                let bytes = tokio::fs::read(gap_tree_path).await.with_context(|| {
+                    format!(
+                        "Failed to read gap-tree from {}. Retry with --gap-tree-mode rebuild",
+                        gap_tree_path.display()
+                    )
+                })?;
+                if use_orchard_tree {
+                    PoolMerkleTree::Orchard(OrchardGapTree::from_bytes(&bytes).with_context(
+                        || {
+                            format!(
+                                "Failed to parse Orchard gap-tree {}. Retry with --gap-tree-mode rebuild",
+                                gap_tree_path.display()
+                            )
+                        },
+                    )?)
+                } else {
+                    PoolMerkleTree::Sapling(SaplingGapTree::from_bytes(&bytes).with_context(
+                        || {
+                            format!(
+                                "Failed to parse Sapling gap-tree {}. Retry with --gap-tree-mode rebuild",
+                                gap_tree_path.display()
+                            )
+                        },
+                    )?)
+                }
+            };
+
+            info!(%pool, "Non-membership tree ready");
+
+            Ok(LoadedPoolData {
+                tree,
+                user_nullifiers: user_positions,
+            })
+        }
+    }
 }
 
 /// Generate airdrop claims for the user's notes.
@@ -271,36 +544,41 @@ async fn build_pool_merkle_tree(
 /// This generic function works with any metadata type implementing `NoteMetadata`,
 /// producing claim inputs with the appropriate pool-specific private inputs.
 fn generate_claims<M: NoteMetadata>(
-    tree: &NonMembershipTree,
+    tree: &PoolMerkleTree,
     user_nullifiers: &[TreePosition],
     note_metadata_map: &HashMap<Nullifier, M>,
     viewing_keys: &ViewingKeys,
-) -> Vec<ClaimInput<M::PoolPrivateInputs>> {
+) -> eyre::Result<Vec<ClaimInput<M::PoolPrivateInputs>>> {
     user_nullifiers
         .iter()
-        .filter_map(|tree_position| {
-            let metadata = note_metadata_map.get(&tree_position.nullifier)?;
+        .enumerate()
+        .map(|(index, tree_position)| {
+            let metadata = note_metadata_map
+                .get(&tree_position.nullifier)
+                .ok_or_else(|| {
+                    eyre::eyre!(
+                        "Missing note metadata for nullifier {} at claim index {}",
+                        tree_position.nullifier,
+                        index
+                    )
+                })?;
 
-            let nf_merkle_proof: Vec<[u8; 32]> = tree
-                .witness(tree_position.leaf_position)
-                .ok()?
-                .iter()
-                .map(NonMembershipNode::to_bytes)
-                .collect();
+            let nf_merkle_proof = tree.witness_bytes(tree_position.leaf_position.into())?;
 
             debug!(
+                index,
                 "Generated proof for nullifier {:x?} at block height {}",
                 tree_position.nullifier,
                 metadata.block_height()
             );
 
-            Some(ClaimInput {
+            let private_inputs =
+                metadata.to_private_inputs(tree_position, nf_merkle_proof, viewing_keys)?;
+            Ok(ClaimInput {
                 public_inputs: PublicInputs {
                     airdrop_nullifier: metadata.hiding_nullifier(),
                 },
-                private_inputs: metadata
-                    .to_private_inputs(tree_position, nf_merkle_proof, viewing_keys)
-                    .ok()?,
+                private_inputs,
             })
         })
         .collect()
@@ -309,13 +587,15 @@ fn generate_claims<M: NoteMetadata>(
 /// Generic pool claim processor.
 ///
 /// Processes claims for any pool type implementing `PoolProcessor`.
-#[instrument(skip_all, fields(pool_name = P::POOL_NAME))]
+#[instrument(level = "debug", skip_all, fields(pool = %P::POOL))]
 async fn process_pool_claims<P: PoolProcessor>(
     pool_enabled_in_config: bool,
     visitor: &AccountNotesVisitor,
     viewing_keys: &ViewingKeys,
     airdrop_config: &AirdropConfiguration,
     snapshot_nullifiers: Option<PathBuf>,
+    gap_tree_file: Option<PathBuf>,
+    gap_tree_mode: GapTreeMode,
 ) -> eyre::Result<PoolClaimResult<P::PrivateInputs>> {
     if !pool_enabled_in_config {
         return Ok(PoolClaimResult::empty());
@@ -324,46 +604,63 @@ async fn process_pool_claims<P: PoolProcessor>(
     let Some(snapshot_nullifiers) = snapshot_nullifiers else {
         return Err(eyre::eyre!(
             "{} snapshot nullifiers path is required by the airdrop configuration",
-            P::POOL_NAME
+            P::POOL
         ));
     };
+    if gap_tree_mode != GapTreeMode::Sparse && gap_tree_file.is_none() {
+        return Err(eyre::eyre!(
+            "{} gap-tree path is required by the airdrop configuration",
+            P::POOL
+        ));
+    }
 
     let Some(notes) = P::collect_notes(visitor, viewing_keys, airdrop_config)? else {
-        warn!("UFVK has no {} viewing key; skipping", P::POOL_NAME);
+        warn!("UFVK has no {} viewing key; skipping", P::POOL);
         return Ok(PoolClaimResult::empty());
     };
 
     // Build merkle tree
     let user_nullifiers = SanitiseNullifiers::new(notes.keys().copied().collect());
-    let pool_data = build_pool_merkle_tree(&snapshot_nullifiers, user_nullifiers).await?;
+    let pool_data = build_pool_merkle_tree(
+        &snapshot_nullifiers,
+        gap_tree_file.as_deref(),
+        user_nullifiers,
+        P::POOL,
+        gap_tree_mode,
+    )
+    .await?;
 
     // Verify merkle root
-    let anchor = pool_data.tree.root().to_bytes();
+    let anchor = pool_data.tree.root_bytes();
     let Some(expected_root) = P::expected_root(airdrop_config) else {
         return Err(eyre::eyre!(
             "{} pool is unexpectedly missing in the airdrop configuration",
-            P::POOL_NAME
+            P::POOL
         ));
     };
     ensure!(
         expected_root == anchor,
         "{} merkle root mismatch with airdrop configuration",
-        P::POOL_NAME
+        P::POOL
     );
 
-    info!("Generating non-membership proofs");
+    info!(
+        pool = %P::POOL,
+        "Extracting witness paths for user nullifiers"
+    );
     let claims = generate_claims(
         &pool_data.tree,
         &pool_data.user_nullifiers,
         &notes,
         viewing_keys,
-    );
+    )
+    .with_context(|| format!("Failed to generate {} claims", P::POOL))?;
 
     Ok(PoolClaimResult { claims })
 }
 
 /// Load nullifiers from a file.
-#[instrument(fields(path))]
+#[instrument(level = "debug", fields(path))]
 pub async fn load_nullifiers_from_file(path: &Path) -> eyre::Result<SanitiseNullifiers> {
     debug!("Loading nullifiers from file");
 
@@ -375,7 +672,221 @@ pub async fn load_nullifiers_from_file(path: &Path) -> eyre::Result<SanitiseNull
         .context(format!("Failed to read {}", path.display()))?;
     let sanitised_nullifiers = SanitiseNullifiers::new(nullifiers);
 
-    info!("Read {} nullifiers from disk", sanitised_nullifiers.len());
+    info!(file = %path.display(), "Read {} nullifiers from disk", sanitised_nullifiers.len());
 
     Ok(sanitised_nullifiers)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use group::ff::PrimeField as _;
+    use pasta_curves::pallas;
+    use tokio::io::{AsyncWriteExt as _, BufWriter};
+    use zair_core::schema::config::{
+        AirdropConfiguration, AirdropNetwork, OrchardSnapshot, SaplingSnapshot,
+        ValueCommitmentScheme,
+    };
+    use zair_scan::write_nullifiers;
+
+    use super::*;
+
+    const POOLS: [Pool; 2] = [Pool::Sapling, Pool::Orchard];
+
+    fn unique_temp_path(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("zair-{prefix}-{}-{unique}.bin", std::process::id()))
+    }
+
+    fn chain_nullifiers(pool: Pool) -> SanitiseNullifiers {
+        if pool == Pool::Orchard {
+            SanitiseNullifiers::new(vec![
+                Nullifier::from(pallas::Base::from(1_u64).to_repr()),
+                Nullifier::from(pallas::Base::from(5_u64).to_repr()),
+            ])
+        } else {
+            SanitiseNullifiers::new(vec![
+                Nullifier::from([1_u8; 32]),
+                Nullifier::from([3_u8; 32]),
+            ])
+        }
+    }
+
+    async fn write_snapshot_file(path: &Path, nullifiers: &SanitiseNullifiers) {
+        let file = File::create(path)
+            .await
+            .expect("snapshot file should be created");
+        let mut writer = BufWriter::with_capacity(FILE_BUF_SIZE, file);
+        write_nullifiers(nullifiers, &mut writer)
+            .await
+            .expect("snapshot nullifiers should be written");
+        writer.flush().await.expect("snapshot writer should flush");
+    }
+
+    async fn cleanup(paths: &[&Path]) {
+        for path in paths {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+
+    fn test_config(with_sapling: bool, with_orchard: bool) -> AirdropConfiguration {
+        AirdropConfiguration::new(
+            AirdropNetwork::Testnet,
+            3_839_800,
+            with_sapling.then_some(SaplingSnapshot {
+                note_commitment_root: [1_u8; 32],
+                nullifier_gap_root: [2_u8; 32],
+                target_id: "ZAIRTEST".to_string(),
+                value_commitment_scheme: ValueCommitmentScheme::Native,
+            }),
+            with_orchard.then_some(OrchardSnapshot {
+                note_commitment_root: [3_u8; 32],
+                nullifier_gap_root: [4_u8; 32],
+                target_id: "ZAIRTEST:O".to_string(),
+                value_commitment_scheme: ValueCommitmentScheme::Native,
+            }),
+        )
+    }
+
+    #[tokio::test]
+    async fn corrupted_gap_tree_fails_without_rebuild() {
+        for pool in POOLS {
+            let snapshot_path = unique_temp_path("snapshot");
+            let gaptree_path = unique_temp_path("gaptree");
+            let chain = chain_nullifiers(pool);
+            write_snapshot_file(&snapshot_path, &chain).await;
+            tokio::fs::write(&gaptree_path, [0_u8, 1_u8, 2_u8])
+                .await
+                .expect("corrupt cache bytes should be written");
+
+            let result = build_pool_merkle_tree(
+                &snapshot_path,
+                Some(&gaptree_path),
+                SanitiseNullifiers::new(vec![]),
+                pool,
+                GapTreeMode::None,
+            )
+            .await;
+
+            cleanup(&[snapshot_path.as_path(), gaptree_path.as_path()]).await;
+
+            let err = result
+                .err()
+                .expect("corrupt gap-tree should fail without rebuild");
+            assert!(
+                err.to_string()
+                    .contains(&format!("Failed to parse {pool} gap-tree"))
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn corrupted_gap_tree_is_rebuilt_and_rewritten_with_rebuild_flag() {
+        for pool in POOLS {
+            let snapshot_path = unique_temp_path("snapshot");
+            let gaptree_path = unique_temp_path("gaptree");
+            let chain = chain_nullifiers(pool);
+            write_snapshot_file(&snapshot_path, &chain).await;
+            tokio::fs::write(&gaptree_path, [0_u8, 1_u8, 2_u8])
+                .await
+                .expect("corrupt cache bytes should be written");
+
+            let pool_data = build_pool_merkle_tree(
+                &snapshot_path,
+                Some(&gaptree_path),
+                SanitiseNullifiers::new(vec![]),
+                pool,
+                GapTreeMode::Rebuild,
+            )
+            .await
+            .expect("rebuild should recover from corrupt gap-tree");
+
+            let persisted = tokio::fs::read(&gaptree_path)
+                .await
+                .expect("gap-tree should be rewritten");
+            assert!(
+                persisted.len() > 3,
+                "rewritten gap-tree should not equal corrupt placeholder bytes"
+            );
+
+            let persisted_root = if pool == Pool::Orchard {
+                OrchardGapTree::from_bytes(&persisted)
+                    .expect("rewritten orchard cache should decode")
+                    .root_bytes()
+            } else {
+                SaplingGapTree::from_bytes(&persisted)
+                    .expect("rewritten sapling cache should decode")
+                    .root_bytes()
+            };
+            assert_eq!(
+                persisted_root,
+                pool_data.tree.root_bytes(),
+                "rewritten cache root should match in-memory tree root"
+            );
+
+            cleanup(&[snapshot_path.as_path(), gaptree_path.as_path()]).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn sparse_mode_builds_without_gap_tree_file() {
+        for pool in POOLS {
+            let snapshot_path = unique_temp_path("snapshot");
+            let chain = chain_nullifiers(pool);
+            write_snapshot_file(&snapshot_path, &chain).await;
+
+            let pool_data = build_pool_merkle_tree(
+                &snapshot_path,
+                None,
+                SanitiseNullifiers::new(vec![]),
+                pool,
+                GapTreeMode::Sparse,
+            )
+            .await
+            .expect("sparse mode should build without gap-tree file");
+
+            assert_eq!(
+                pool_data.user_nullifiers.len(),
+                0,
+                "empty user nullifier set should produce no mapped positions"
+            );
+
+            cleanup(&[snapshot_path.as_path()]).await;
+        }
+    }
+
+    #[test]
+    fn sparse_mode_discards_gap_tree_paths() {
+        let resolved = resolve_gap_tree_path_if_enabled(
+            true,
+            Some(PathBuf::from("gaptree-sapling.bin")),
+            DEFAULT_SAPLING_GAP_TREE_FILE,
+            Pool::Sapling,
+            GapTreeMode::Sparse,
+        );
+        assert!(
+            resolved.is_none(),
+            "sparse mode should discard provided gap-tree path"
+        );
+    }
+
+    #[test]
+    fn none_mode_requires_gap_tree_paths() {
+        let config = test_config(false, true);
+        let err = validate_pool_inputs(
+            &config,
+            None,
+            Some(&PathBuf::from("snapshot-orchard.bin")),
+            None,
+            None,
+            GapTreeMode::None,
+        )
+        .expect_err("none mode must require gap-tree path for enabled pools");
+        assert!(err.to_string().contains("--gap-tree-orchard is missing"));
+    }
 }

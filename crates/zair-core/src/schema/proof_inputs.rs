@@ -96,7 +96,7 @@ pub struct SaplingPrivateInputs {
 
     // === For nullifier derivation ===
     /// The position of the note in Sapling commitment tree (used for nullifier derivation).
-    pub cm_note_position: u64,
+    pub note_commitment_position: u64,
     /// The scope of the note (External for received payments, Internal for change).
     /// Informational - the actual keys (ak, nk) are already included above.
     pub scope: SerializableScope,
@@ -105,47 +105,87 @@ pub struct SaplingPrivateInputs {
     /// The Merkle proof siblings for the note commitment tree.
     /// Proves the note commitment exists in Zcash at the snapshot height.
     #[serde_as(as = "Vec<Hex>")]
-    pub cm_merkle_proof: Vec<[u8; 32]>,
+    pub note_commitment_merkle_path: Vec<[u8; 32]>,
 
     // === For non-membership proof (proves nullifier not spent) ===
     /// The lower bound nullifier (the largest nullifier smaller than the target).
-    pub left_nullifier: Nullifier,
+    pub nullifier_gap_left_bound: Nullifier,
     /// The upper bound nullifier (the smallest nullifier larger than the target).
-    pub right_nullifier: Nullifier,
+    pub nullifier_gap_right_bound: Nullifier,
     /// The position of the leaf in the non-membership Merkle tree.
-    pub nf_leaf_position: u64,
+    pub nullifier_gap_position: u64,
     /// The Merkle proof siblings proving the `(left, right)` range leaf exists in the tree.
     #[serde_as(as = "Vec<Hex>")]
-    pub nf_merkle_proof: Vec<[u8; 32]>,
+    pub nullifier_gap_merkle_path: Vec<[u8; 32]>,
 }
 
 /// Private inputs for an Orchard non-membership proof.
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchardPrivateInputs {
-    /// The commitment of the note that is unspent.
+    // === Note preimage / identity ===
+    /// The note rho value (used to derive psi/rcm inside the Orchard circuit).
     #[serde_as(as = "Hex")]
-    pub note_commitment: [u8; 32],
+    pub rho: [u8; 32],
+    /// The note rseed (ZIP-212 seed randomness).
+    #[serde_as(as = "Hex")]
+    pub rseed: [u8; 32],
+    /// The diversified base point `g_d` (recipient).
+    #[serde_as(as = "Hex")]
+    pub g_d: [u8; 32],
+    /// The diversified transmission key `pk_d` (recipient).
+    #[serde_as(as = "Hex")]
+    pub pk_d: [u8; 32],
+    /// Note value in zatoshis.
+    pub value: u64,
+
+    // === For note commitment inclusion proof (proves note exists in Zcash) ===
+    /// The position of the note in the Orchard commitment tree.
+    pub note_commitment_position: u64,
+    /// The scope of the note (External for received payments, Internal for change).
+    pub scope: SerializableScope,
     /// Proves the note commitment exists in Zcash at the snapshot height.
     #[serde_as(as = "Vec<Hex>")]
-    pub cm_merkle_proof: Vec<[u8; 32]>,
+    pub note_commitment_merkle_path: Vec<[u8; 32]>,
+
+    // === For non-membership proof (proves nullifier not spent) ===
     /// The lower bound nullifier (the largest nullifier smaller than the target).
-    pub left_nullifier: Nullifier,
+    pub nullifier_gap_left_bound: Nullifier,
     /// The upper bound nullifier (the smallest nullifier larger than the target).
-    pub right_nullifier: Nullifier,
+    pub nullifier_gap_right_bound: Nullifier,
     /// The position of the leaf in the non-membership Merkle tree.
-    pub nf_leaf_position: u64,
+    pub nullifier_gap_position: u64,
     /// The Merkle proof bytes proving the `(left, right)` range leaf exists in the non-membership
     /// tree.
     #[serde_as(as = "Vec<Hex>")]
-    pub nf_merkle_proof: Vec<[u8; 32]>,
+    pub nullifier_gap_merkle_path: Vec<[u8; 32]>,
 }
 
 /// Public inputs for the non-membership proof.
-#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicInputs {
     /// The airdrop nullifier
-    #[serde_as(as = "Hex")]
     pub airdrop_nullifier: Nullifier,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PublicInputs;
+    use crate::base::Nullifier;
+
+    #[test]
+    fn public_inputs_serializes_nullifier_in_reversed_hex() {
+        let mut bytes = [0_u8; 32];
+        bytes[0] = 0xab;
+        bytes[31] = 0xcd;
+        let inputs = PublicInputs {
+            airdrop_nullifier: Nullifier::new(bytes),
+        };
+
+        let json = serde_json::to_string(&inputs).expect("serialize public inputs");
+        assert_eq!(
+            json,
+            format!(r#"{{"airdrop_nullifier":"cd{}ab"}}"#, "00".repeat(30))
+        );
+    }
 }

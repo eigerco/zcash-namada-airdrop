@@ -1182,8 +1182,6 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73a5e510d58a07d8ed238a5a8a436fe6c2c79e1bb2611f62688bc65007b4e6e7"
 dependencies = [
  "arrayvec",
  "bitvec",
@@ -1786,22 +1784,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mnemonic-to-fvks"
-version = "0.1.0"
-dependencies = [
- "bip39",
- "clap",
- "dotenvy",
- "eyre",
- "hex",
- "rpassword",
- "secrecy 0.10.3",
- "zcash_keys",
- "zcash_protocol",
- "zip32",
 ]
 
 [[package]]
@@ -2894,10 +2876,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
-name = "test-utils"
-version = "0.1.0"
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3770,8 +3748,9 @@ dependencies = [
  "bytemuck",
  "schemars 1.2.1",
  "serde",
+ "serde_json",
  "serde_with",
- "test-utils",
+ "sha2 0.10.9",
  "zip32",
 ]
 
@@ -3780,13 +3759,45 @@ name = "zair-nonmembership"
 version = "0.1.0"
 dependencies = [
  "bridgetree",
+ "ff",
  "hex-literal",
  "incrementalmerkletree",
  "jubjub",
+ "orchard",
+ "pasta_curves",
  "sapling-crypto",
- "test-utils",
  "thiserror 2.0.18",
  "zair-core",
+]
+
+[[package]]
+name = "zair-orchard-circuit"
+version = "0.1.0"
+dependencies = [
+ "ff",
+ "group",
+ "halo2_gadgets",
+ "halo2_proofs",
+ "orchard",
+ "pasta_curves",
+ "rand 0.8.5",
+ "sha2 0.10.9",
+ "zair-core",
+]
+
+[[package]]
+name = "zair-orchard-proofs"
+version = "0.1.0"
+dependencies = [
+ "ff",
+ "group",
+ "halo2_proofs",
+ "orchard",
+ "pasta_curves",
+ "rand 0.8.5",
+ "thiserror 2.0.18",
+ "zair-core",
+ "zair-orchard-circuit",
 ]
 
 [[package]]
@@ -3800,6 +3811,7 @@ dependencies = [
  "rand_core 0.6.4",
  "rand_xorshift",
  "sapling-crypto",
+ "zair-core",
 ]
 
 [[package]]
@@ -3814,7 +3826,6 @@ dependencies = [
  "jubjub",
  "rand 0.8.5",
  "sapling-crypto",
- "sha2 0.10.9",
  "thiserror 2.0.18",
  "zair-core",
  "zair-nonmembership",
@@ -3841,7 +3852,6 @@ dependencies = [
  "serde_json",
  "shardtree",
  "tempfile",
- "test-utils",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
@@ -3860,30 +3870,37 @@ name = "zair-sdk"
 version = "0.1.0"
 dependencies = [
  "bellman",
+ "bip39",
  "blake2b_simd",
  "bls12_381",
  "eyre",
  "group",
+ "halo2_proofs",
  "hex",
  "http",
  "jubjub",
  "orchard",
+ "pasta_curves",
  "rand_core 0.6.4",
  "redjubjub",
+ "rpassword",
  "sapling-crypto",
  "secrecy 0.10.3",
  "serde",
  "serde_json",
  "serde_with",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "zair-core",
  "zair-nonmembership",
+ "zair-orchard-proofs",
  "zair-sapling-proofs",
  "zair-scan",
  "zcash_keys",
  "zcash_protocol",
+ "zcash_spec",
  "zeroize",
  "zip32",
 ]
