@@ -170,3 +170,26 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
       - name: Check typos
         uses: crate-ci/typos@2d0ce569feab1f8752f1dde43cc2f2aa53236e06 # tag: v1.40.0
+
+  docs-build:
+    name: docs / mdbook build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # tag: v6.0.1
+      - name: Setup Rust build environment
+        uses: ./.github/actions/setup-rust-build
+        with:
+          toolchain: stable
+          shared-key: docs-mdbook
+      - name: Install cargo-binstall
+        uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # tag: v2.65.1
+        with:
+          tool: cargo-binstall
+      - name: Install mdbook and plugins
+        run: |
+          cargo binstall -y 'mdbook@0.4.52' || cargo install --locked mdbook --version 0.4.52
+          cargo binstall -y mdbook-katex mdbook-admonish || cargo install --locked mdbook-katex mdbook-admonish
+      - name: mdbook build
+        run: mdbook build docs
