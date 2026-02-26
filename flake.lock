@@ -75,21 +75,17 @@
         "type": "github"
       }
     },
-    "halo2": {
+    "halo2-gadgets-crate": {
       "flake": false,
       "locked": {
-        "lastModified": 1734374979,
-        "narHash": "sha256-gN2ktfTKQr+J16IZJKeqciRkMsUXQ8/v5u9MqAJQ9PA=",
-        "owner": "zcash",
-        "repo": "halo2",
-        "rev": "3bb6f5ccbcdc3d285babcea09925a741a4452281",
-        "type": "github"
+        "lastModified": 1153704088,
+        "narHash": "sha256-+P8mr9rPfC3j5jhfZJnnfN4FLYQupSlhSRrv8NFYi68=",
+        "type": "tarball",
+        "url": "https://static.crates.io/crates/halo2_gadgets/halo2_gadgets-0.3.1.crate"
       },
       "original": {
-        "owner": "zcash",
-        "repo": "halo2",
-        "rev": "3bb6f5ccbcdc3d285babcea09925a741a4452281",
-        "type": "github"
+        "type": "tarball",
+        "url": "https://static.crates.io/crates/halo2_gadgets/halo2_gadgets-0.3.1.crate"
       }
     },
     "nixpkgs": {
@@ -192,7 +188,7 @@
       "inputs": {
         "flake-parts": "flake-parts",
         "git-hooks-nix": "git-hooks-nix",
-        "halo2": "halo2",
+        "halo2-gadgets-crate": "halo2-gadgets-crate",
         "nixpkgs": "nixpkgs_2",
         "orchard": "orchard",
         "rust-overlay": "rust-overlay",

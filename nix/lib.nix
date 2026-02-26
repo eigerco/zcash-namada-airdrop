@@ -24,7 +24,7 @@
 
       # Patch halo2_gadgets
       patchedHalo2Gadgets = pkgs.runCommand "halo2-gadgets-patched" { } ''
-        cp -r ${inputs.halo2}/halo2_gadgets $out
+        cp -r ${inputs.halo2-gadgets-crate} $out
         chmod -R +w $out
         patch -p1 -d $out < ${./airdrop-halo2-gadgets-sha256.patch}
       '';

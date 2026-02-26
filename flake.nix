@@ -19,9 +19,9 @@
       flake = false;
     };
 
-    halo2 = {
-      # Commit used by crates.io `halo2_gadgets` 0.3.1 (`path_in_vcs = halo2_gadgets`).
-      url = "github:zcash/halo2/3bb6f5ccbcdc3d285babcea09925a741a4452281";
+    halo2-gadgets-crate = {
+      # crates.io source tarball for `halo2_gadgets` 0.3.1, used for local patching.
+      url = "tarball+https://static.crates.io/crates/halo2_gadgets/halo2_gadgets-0.3.1.crate";
       flake = false;
     };
   };
